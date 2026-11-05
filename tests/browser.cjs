@@ -32,6 +32,7 @@ function mock(role){
  assert.equal(await page.locator('main input:not([type=hidden]),main select,main textarea').evaluateAll(fields=>fields.filter(f=>!f.labels?.length&&!f.hasAttribute('aria-label')).length),0,`${tab}: labels`);
  if(tab!=='home')assert(await page.locator('header').evaluate(e=>e.getBoundingClientRect().height)<140);
  assert.deepEqual(await page.locator('#tabs button').allTextContents(),['Home','Team','Matches','Stats',role==='coach'?'Training':'My Training']);assert.match(await page.locator('#acc-btn').innerText(),role==='coach'?/COACH/:/PLAYER/);
+ assert.equal(await page.getByRole('button',{name:/team standards/i}).count(),0);
  screens++;
  }
  page.once('dialog',d=>d.accept());
