@@ -4,7 +4,7 @@ const URL='https://bdydfdxxjpdkfqhsjbbf.supabase.co', KEY='sb_publishable_MS2Ukw
 const alert=message=>CometsUI.notify(message);
 const confirm=async message=>Boolean(await CometsUI.dialog({title:'Please confirm',message,submit:'Confirm',danger:true}));
 const localDate=value=>{const d=new Date(value);return [d.getFullYear(),String(d.getMonth()+1).padStart(2,'0'),String(d.getDate()).padStart(2,'0')].join('-')};
-let entering=null, db,user,role='player',displayName='',myId=null,ready=false,busy=false,dbPlayers=[],dbFixtures=[],dbSessions=[],dbSelections=[],dbStats=[],dbPrograms=[],dbLogs=[],dbAvailability=[];
+let entering=null, db,user,role='player',displayName='',myId=null,ready=false,busy=false,dbPlayers=[],dbArchivedPlayers=[],dbFixtures=[],dbSessions=[],dbSelections=[],dbStats=[],dbPrograms=[],dbLogs=[],dbAvailability=[];
 const wall=document.getElementById('auth-wall'),notice=document.getElementById('comets-auth-message');
 const esc2=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const coach=()=>role==='coach', firstName=()=>displayName.split(/\s+/)[0]|| (coach()?'Coach':'Player'), val=id=>document.getElementById(id)?.value?.trim()||'', err=e=>e?.message||String(e);
@@ -59,6 +59,7 @@ function enhance(){
  if(!coach()&&state.tab==='training')app.innerHTML='<div class="section-head"><div class="club-kicker">FIRST GRADE · PRIVATE</div><h2>MY TRAINING</h2></div>';
  if(coach()&&state.tab==='playerprograms')app.innerHTML='<div class="section-head"><h2>PLAYER PROGRAMS</h2></div>'; 
  if(state.tab==='training'||(coach()&&state.tab==='playerprograms'))appendTraining(app);
+ if(coach()&&state.tab==='training')appendAttendance(app);
  CometsUI.polish();
 
 }
@@ -118,7 +119,8 @@ function account(){
  if(coach()){el.querySelector('#acc-invite').onclick=invite;el.querySelector('#acc-access').onclick=()=>{CometsUI.closeAccount();changeTab('access')}}
 }
 function clearClubData(){
- dbPlayers=[];dbFixtures=[];dbSessions=[];dbSelections=[];dbStats=[];dbPrograms=[];dbLogs=[];dbAvailability=[];
+ window.cometsAttendanceDirty=false;
+ dbPlayers=[];dbArchivedPlayers=[];dbFixtures=[];dbSessions=[];dbSelections=[];dbStats=[];dbPrograms=[];dbLogs=[];dbAvailability=[];
  for(const key of ['players','matches','sessions'])club[key]=[];
  for(const key of ['selections','publishedSelections','playerStats','matchPlayerStats','playerTraining'])club[key]={};
  window.cometsLive=true;save();user=null;myId=null;displayName='';
@@ -128,6 +130,7 @@ async function enter(){if(entering)return entering;entering=enterOnce();try{retu
 async function enterOnce(){const {data:{session},error:sessionError}=await db.auth.getSession();if(sessionError)throw sessionError;if(!session?.user)return login();const {data:{user:u},error}=await db.auth.getUser();if(error)throw error;if(!u)return login();user=u;const {data:r,error:re}=await db.from('user_roles').select('role').eq('user_id',u.id).single();if(re)throw re;if(!['coach','player'].includes(r?.role))throw new Error('Your account needs a club role. Please contact your coach.');role=r.role;const {data:profile,error:profileError}=await db.from('profiles').select('display_name').eq('id',u.id).maybeSingle();if(profileError)throw profileError;displayName=(profile?.display_name||u.user_metadata?.display_name||'').trim();const {data:link,error:linkError}=await db.from('player_links').select('player_id').eq('user_id',u.id).maybeSingle();if(linkError)throw linkError;myId=link?.player_id||null;await load();wall.hidden=true;document.querySelector('header').style.display='';document.getElementById('app').style.display='';document.getElementById('tabs').style.display='';ready=true;account();state.tab='home';refresh()}
 async function load(){[dbPlayers,dbFixtures,dbSessions,dbSelections,dbStats,dbPrograms,dbLogs,dbAvailability]=await Promise.all(['squad_players','fixtures','training_sessions','team_selections','match_stats','player_programs','player_training','player_availability'].map(api));
  // Keep linked invitation and history rows intact; only active players belong in the squad.
+ dbArchivedPlayers=dbPlayers.filter(p=>p.active===false);
  dbPlayers=dbPlayers.filter(p=>p.active!==false);
  // Map the shared data into the original V6.2 view models. Do not erase unrelated local gym logs.
  club.players=dbPlayers.map(p=>({id:p.id,name:p.full_name,position:p.position,jersey:p.jersey_number||'',notes:''}));
@@ -185,6 +188,45 @@ function appendMatchStats(app){const c=document.createElement('section');c.class
  c.querySelector('#stat-fixture').onchange=fillStats;c.querySelector('#stat-player').onchange=fillStats;fillStats();
  c.querySelector('#stat-save').disabled=!dbFixtures.length||!dbPlayers.length;
  c.querySelector('#stat-save').onclick=()=>safe(async()=>{const obj={fixture_id:val('stat-fixture'),player_id:val('stat-player')};if(!obj.fixture_id||!obj.player_id)return alert('Choose a fixture and player');for(const k of ['tries','tackles','metres','errors']){const n=Number(val('stat-'+k));if(!Number.isInteger(n)||n<0)throw new Error('Match statistics must be whole numbers of zero or more.');obj[k]=n;}const {error}=await db.from('match_stats').upsert(obj,{onConflict:'fixture_id,player_id'});if(error)throw error;await load();refresh();CometsUI.notify('Saved successfully.')})}
+function appendAttendance(app){
+ const section=document.createElement('section');section.className='card attendance-card';section.id='attendance-register';
+ section.innerHTML='<div class="club-kicker">COACH TOOLS</div><h3>Training attendance</h3><p>Choose a scheduled session or add a training day. All coaches share one register per date.</p><label for="attendance-session">Scheduled training session</label><select id="attendance-session"><option value="manual">Choose a training day directly</option>'+dbSessions.slice().sort((a,b)=>b.starts_at.localeCompare(a.starts_at)).map(s=>'<option value="'+esc2(s.id)+'">'+esc2(new Date(s.starts_at).toLocaleString('en-AU',{day:'numeric',month:'short',year:'numeric',hour:'numeric',minute:'2-digit'})+' · '+(s.location||'Team training'))+'</option>').join('')+'</select><label for="attendance-day">Training day</label><input id="attendance-day" type="date" value="'+today()+'"><label for="attendance-title">Session name</label><input id="attendance-title" maxlength="120" value="Team training"><p id="attendance-state" role="status">Loading register…</p><div id="attendance-summary" class="attendance-summary"></div><div id="attendance-players"></div><div class="tools"><button class="secondary" id="attendance-present" disabled>MARK ALL PRESENT</button><button class="primary" id="attendance-save" disabled>SAVE ATTENDANCE</button><button class="secondary" id="attendance-reload">RELOAD SAVED REGISTER</button></div>';
+ const intro=app.querySelector('.section-head');if(intro)intro.after(section);else app.prepend(section);
+ const date=section.querySelector('#attendance-day'),session=section.querySelector('#attendance-session'),title=section.querySelector('#attendance-title'),status=section.querySelector('#attendance-state'),root=section.querySelector('#attendance-players'),summary=section.querySelector('#attendance-summary'),saveButton=section.querySelector('#attendance-save'),allButton=section.querySelector('#attendance-present');
+ let revision=0,day=date.value,sessionValue='manual',loadId=0,loaded=false,marks={};
+ const names={present:'Present',absent:'Absent',excused:'Excused',unmarked:'Not marked'};
+ const changed=()=>{window.cometsAttendanceDirty=true;status.textContent='Unsaved attendance changes.';summarise()};
+ function summarise(){summary.textContent='Active squad: '+Object.entries(names).map(([key,label])=>dbPlayers.filter(p=>(marks[p.id]||'unmarked')===key).length+' '+label.toLowerCase()).join(' · ')}
+ function draw(){
+  root.innerHTML=dbPlayers.length?dbPlayers.slice().sort((a,b)=>a.full_name.localeCompare(b.full_name)).map(p=>'<div class="attendance-row"><div><b>'+esc2(p.full_name)+'</b><small>'+esc2(p.position||'')+'</small></div><div><label for="attendance-'+esc2(p.id)+'">Attendance for '+esc2(p.full_name)+'</label><select id="attendance-'+esc2(p.id)+'" data-attendance-player="'+esc2(p.id)+'">'+Object.entries(names).map(([key,label])=>'<option value="'+key+'" '+((marks[p.id]||'unmarked')===key?'selected':'')+'>'+label+'</option>').join('')+'</select></div></div>').join(''):'<p>Add active players in Team → Squad before marking attendance.</p>';
+  const archived=dbArchivedPlayers.filter(p=>marks[p.id]!==undefined);if(archived.length){const history=document.createElement('details');history.innerHTML='<summary>Archived players in this register ('+archived.length+')</summary>'+archived.map(p=>'<p>'+esc2(p.full_name)+' · '+esc2(names[marks[p.id]]||'Not marked')+'</p>').join('');root.append(history)}
+  root.querySelectorAll('[data-attendance-player]').forEach(select=>select.onchange=()=>{marks[select.dataset.attendancePlayer]=select.value;changed()});summarise();CometsUI.polish();
+ }
+ async function readRegister(){
+  const request=++loadId;window.cometsAttendanceDirty=false;loaded=false;saveButton.disabled=true;allButton.disabled=true;status.textContent='Loading register…';
+  try{
+   const {data:register,error}=await db.from('comets_training_days').select('*').eq('attendance_date',day).maybeSingle();if(error)throw error;
+   let rows=[];if(register){const response=await db.from('comets_training_attendance').select('*').eq('day_id',register.id);if(response.error)throw response.error;rows=response.data||[]}
+   if(!section.isConnected||request!==loadId)return;
+   marks=Object.fromEntries(rows.map(r=>[r.player_id,r.status]));revision=register?.revision||0;title.value=register?.title||'Team training';window.cometsAttendanceDirty=false;loaded=true;draw();
+   saveButton.disabled=!dbPlayers.length;allButton.disabled=!dbPlayers.length;status.textContent=register?'Saved register loaded. Changes are saved only when you select Save Attendance.':'No attendance saved for this day. Players start as Not marked.';
+  }catch{if(request!==loadId||!section.isConnected)return;root.replaceChildren();summary.textContent='';status.textContent='Attendance unavailable. Retry using Reload Saved Register. If this is the first setup, install the attendance SQL in Supabase.'}
+ }
+ async function discard(){return !window.cometsAttendanceDirty||await confirm('Discard unsaved attendance changes and load another register?')}
+ session.onchange=async()=>{const next=session.value;if(!await discard()){session.value=sessionValue;return}sessionValue=next;const scheduled=dbSessions.find(s=>s.id===next);if(scheduled)date.value=localDate(scheduled.starts_at);date.disabled=!!scheduled;day=date.value;await readRegister()};
+ date.onchange=async()=>{const next=date.value;if(!next||!await discard()){date.value=day;return}day=next;await readRegister()};
+ title.oninput=()=>{if(loaded)changed()};
+ allButton.onclick=()=>{if(!loaded)return;dbPlayers.forEach(p=>marks[p.id]='present');draw();changed()};
+ section.querySelector('#attendance-reload').onclick=async()=>{if(await discard())await readRegister()};
+ saveButton.onclick=()=>safe(async()=>{
+  if(!loaded||date.value!==day)return;if(!title.value.trim())throw new Error('Enter a session name.');
+  const {data,error}=await db.rpc('comets_save_attendance',{p_day:day,p_title:title.value.trim(),p_revision:revision,p_marks:dbPlayers.map(p=>({player_id:p.id,status:marks[p.id]||'unmarked'}))});
+  if(error)throw new Error('Attendance was not saved. '+err(error));if(!data||!Number.isInteger(data.revision))throw new Error('Attendance was not saved. Check the backend setup.');
+  revision=data.revision;window.cometsAttendanceDirty=false;status.textContent='Attendance saved for '+new Date(day+'T12:00:00').toLocaleDateString('en-AU',{day:'numeric',month:'short',year:'numeric'})+'.';alert('Attendance saved.');
+ });
+ readRegister();
+}
+
 function appendTraining(app){
  const c=document.createElement('section');c.className='card';
  if(coach()){
@@ -230,6 +272,9 @@ window.render=function(){
  const totals=matchStats();document.getElementById('club-stats').innerHTML='<div class="stat"><strong>'+esc2(club.season)+'</strong><small>Season</small></div><div class="stat"><strong>1ST GRADE</strong><small>Division</small></div><div class="stat"><strong>'+totals.w+'–'+totals.l+'–'+totals.d+'</strong><small>W–L–D</small></div>';
  enhance();
 };
+const originalChangeTab=window.changeTab;
+window.changeTab=async function(tab){if(window.cometsAttendanceDirty&&!await confirm('Leave Training and discard unsaved attendance changes?'))return;window.cometsAttendanceDirty=false;originalChangeTab(tab)};
+addEventListener('beforeunload',event=>{if(window.cometsAttendanceDirty){event.preventDefault();event.returnValue=''}});
 async function boot(){
  activationForm();
  const loginButton=document.querySelector('#comets-login-form button[type=submit]');
