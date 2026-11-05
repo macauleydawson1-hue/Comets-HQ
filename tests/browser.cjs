@@ -25,7 +25,11 @@ function mock(role){
  for(const role of ['coach','player'])for(const width of [320,390,768,1440]){
  const page=await browser.newPage({viewport:{width,height:844},timezoneId:'Australia/Sydney',serviceWorkers:'block'});const errors=[];page.on('pageerror',e=>{errors.push(e.message);console.error(e.message)});
  await page.route('https://**/*',route=>route.request().url().includes('cdn.jsdelivr.net')?route.fulfill({contentType:'application/javascript',body:'('+mock.toString()+')('+JSON.stringify(role)+');'}):route.abort());
+ // Reproduce the exact reduced club object saved by a prior live session.
+ await page.addInitScript(()=>{if(!localStorage.getItem('rlhq-v1'))localStorage.setItem('rlhq-v1',JSON.stringify({logs:{},weights:[],tests:[],lastOpened:'2026-11-05',club:{values:[],season:'2027',round:'Round 1'}}))});
  await page.goto(base);await page.waitForFunction(()=>document.getElementById('auth-wall').hidden);
+ assert.equal(await page.locator('.mode-switch-wrap').isVisible(),false);
+ await page.reload();await page.waitForFunction(()=>document.getElementById('auth-wall').hidden);assert.equal(await page.locator('.mode-switch-wrap').isVisible(),false);
  // The live bridge must restore announcements even if legacy Home markup omits its slot.
  await page.evaluate(()=>{for(const name of ['home','playerHome']){const original=window[name];window[name]=()=>{const wrapper=document.createElement('div');wrapper.innerHTML=original();wrapper.querySelectorAll('.sideline-feature').forEach(e=>e.remove());return wrapper.innerHTML}}changeTab('home')});
  await page.locator('#sideline-all').waitFor();assert.equal(await page.locator('.sideline-feature').count(),1);assert.equal(await page.locator('#acc-sideline').count(),1);
