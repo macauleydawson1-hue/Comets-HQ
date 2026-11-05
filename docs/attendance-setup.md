@@ -6,7 +6,7 @@ In the existing Supabase project, open SQL Editor → New query and run the comp
 
 ## Use
 
-Coach → Training → Training attendance. Select a scheduled team-training session (using its local calendar date), or choose a day directly. Name the session and mark active squad players Present, Absent, Excused or Not marked. “Mark all present” is a shortcut and still requires Save Attendance. Reopen the date to review/edit saved marks. Saved marks for archived players are retained and displayed read-only under Archived players.
+Coach → Training → Attendance. The separate Training tab retains the existing personal training and program tools. Select a scheduled team-training session (using its local calendar date), or choose a day directly. Name the session and mark active squad players Present, Absent, Excused or Not marked using the labelled radio controls. Search by name or position to find a player; hidden search results retain their marks. The four summary tiles always count the entire active squad. “Mark all present” is a shortcut and still requires Save Attendance. Reopen the date to review/edit saved marks. Saved marks for archived players are retained and displayed read-only under Archived players.
 
 All coaches share one register per calendar date. Multiple scheduled sessions on the same date use the same register. It is a daily attendance record rather than a separate headcount per session. A day can be added even if no training session has been scheduled. Session selection does not modify the scheduling table. Attendance is not exposed to players in either the UI or database policies.
 
@@ -21,3 +21,5 @@ Saving is one database transaction. A revision check rejects stale saves if anot
 5. Check on a phone and computer. No database tables need to be changed manually when recording attendance.
 
 Local browser tests use simulated services and cover saved-session startup, responsive layouts, scheduled and manual dates, defaults, save/reload, unsaved navigation cancellation, failed-save preservation and absence of the register for players. They do not establish deployed SQL/RLS or concurrency correctness; the real-account checks above are still required.
+
+The nested tabs support Left/Right arrow keys and Home/End, with roving keyboard focus and explicitly labelled tab panels. Radio groups use the player name as their legend, preserve native keyboard behaviour and provide large touch targets. Selected statuses have a visible checked control and text, so colour is not the only signal. Returning to Training from a dirty register asks before discarding unsaved changes. This layout update uses the existing database and needs no additional SQL.

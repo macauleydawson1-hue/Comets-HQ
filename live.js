@@ -29,6 +29,7 @@ function enhance(){
  if(state.tab==='home'){const intro=document.querySelector('#app .dashboard-intro h2');if(intro)intro.textContent='Welcome back, '+firstName();}
  document.getElementById('preview-warning')?.setAttribute('hidden','');
  const app=document.getElementById('app');if(!app)return;
+ if(state.tab==='training'){renderTrainingArea(app);CometsUI.polish();return}
  if(state.tab==='video'){renderVideo(app);CometsUI.polish();return}
  if(state.tab==='access'){if(coach())renderAccess(app);else app.innerHTML='<section class="card"><h2>Coach access required</h2></section>';CometsUI.polish();return}
  if(state.tab==='home'){showSidelinePreview(app);if(coach()){const section=document.createElement('section');section.className='card';section.innerHTML='<h3>Coach administration</h3><p>Issue activation codes for coaches and players.</p><button class="primary" onclick="changeTab(\'access\')">MEMBER ACCESS</button>';app.append(section)}}
@@ -188,19 +189,44 @@ function appendMatchStats(app){const c=document.createElement('section');c.class
  c.querySelector('#stat-fixture').onchange=fillStats;c.querySelector('#stat-player').onchange=fillStats;fillStats();
  c.querySelector('#stat-save').disabled=!dbFixtures.length||!dbPlayers.length;
  c.querySelector('#stat-save').onclick=()=>safe(async()=>{const obj={fixture_id:val('stat-fixture'),player_id:val('stat-player')};if(!obj.fixture_id||!obj.player_id)return alert('Choose a fixture and player');for(const k of ['tries','tackles','metres','errors']){const n=Number(val('stat-'+k));if(!Number.isInteger(n)||n<0)throw new Error('Match statistics must be whole numbers of zero or more.');obj[k]=n;}const {error}=await db.from('match_stats').upsert(obj,{onConflict:'fixture_id,player_id'});if(error)throw error;await load();refresh();CometsUI.notify('Saved successfully.')})}
+function renderTrainingArea(app){
+ if(!coach()){app.innerHTML='<div class="section-head"><div class="club-kicker">FIRST GRADE · PRIVATE</div><h2>MY TRAINING</h2></div>';appendTraining(app);return}
+ app.innerHTML='<div class="section-head"><div class="club-kicker">COACHING & PERFORMANCE</div><h2>TRAINING</h2><p>Personal training tools and your team attendance register.</p></div><div class="training-tabs" role="tablist" aria-label="Training sections"><button type="button" id="training-tools-tab" role="tab" aria-selected="true" aria-controls="training-tools-panel" tabindex="0">Training</button><button type="button" id="training-attendance-tab" role="tab" aria-selected="false" aria-controls="training-attendance-panel" tabindex="-1">Attendance</button></div><section id="training-tools-panel" role="tabpanel" aria-labelledby="training-tools-tab" tabindex="0"></section><section id="training-attendance-panel" role="tabpanel" aria-labelledby="training-attendance-tab" tabindex="0" hidden></section>';
+ const tools=app.querySelector('#training-tools-panel'),attendance=app.querySelector('#training-attendance-panel'),tabs=[...app.querySelectorAll('[role=tab]')];
+ const wrapper=document.createElement('div');wrapper.innerHTML=trainingHub();wrapper.querySelector('.section-head')?.remove();tools.append(...wrapper.childNodes);appendTraining(tools);
+ let active=0,attendanceLoaded=false;
+ async function activate(index){
+  if(index===active)return;
+  if(window.cometsAttendanceDirty&&!await confirm('Leave Attendance and discard unsaved marks?'))return;
+  window.cometsAttendanceDirty=false;
+  if(active===1){attendance.replaceChildren();attendanceLoaded=false}
+  active=index;tools.hidden=index!==0;attendance.hidden=index!==1;
+  tabs.forEach((tab,i)=>{tab.setAttribute('aria-selected',String(index===i));tab.tabIndex=index===i?0:-1});
+  if(index===1&&!attendanceLoaded){appendAttendance(attendance);attendanceLoaded=true}
+  tabs[index].focus({preventScroll:true});CometsUI.polish();
+ }
+ tabs.forEach((tab,i)=>{
+  tab.onclick=()=>activate(i);
+  tab.onkeydown=e=>{let next;if(e.key==='ArrowRight')next=(i+1)%tabs.length;else if(e.key==='ArrowLeft')next=(i+tabs.length-1)%tabs.length;else if(e.key==='Home')next=0;else if(e.key==='End')next=tabs.length-1;else return;e.preventDefault();activate(next)};
+ });
+}
+
 function appendAttendance(app){
  const section=document.createElement('section');section.className='card attendance-card';section.id='attendance-register';
- section.innerHTML='<div class="club-kicker">COACH TOOLS</div><h3>Training attendance</h3><p>Choose a scheduled session or add a training day. All coaches share one register per date.</p><label for="attendance-session">Scheduled training session</label><select id="attendance-session"><option value="manual">Choose a training day directly</option>'+dbSessions.slice().sort((a,b)=>b.starts_at.localeCompare(a.starts_at)).map(s=>'<option value="'+esc2(s.id)+'">'+esc2(new Date(s.starts_at).toLocaleString('en-AU',{day:'numeric',month:'short',year:'numeric',hour:'numeric',minute:'2-digit'})+' · '+(s.location||'Team training'))+'</option>').join('')+'</select><label for="attendance-day">Training day</label><input id="attendance-day" type="date" value="'+today()+'"><label for="attendance-title">Session name</label><input id="attendance-title" maxlength="120" value="Team training"><p id="attendance-state" role="status">Loading register…</p><div id="attendance-summary" class="attendance-summary"></div><div id="attendance-players"></div><div class="tools"><button class="secondary" id="attendance-present" disabled>MARK ALL PRESENT</button><button class="primary" id="attendance-save" disabled>SAVE ATTENDANCE</button><button class="secondary" id="attendance-reload">RELOAD SAVED REGISTER</button></div>';
+ section.innerHTML='<div class="attendance-heading"><div><div class="club-kicker">TEAM REGISTER</div><h3>Training attendance</h3><p>Choose a day, mark your squad and save. One shared register per date.</p></div><span class="attendance-badge">COACH ACCESS</span></div><div class="attendance-date-grid"><label for="attendance-session">Scheduled training session</label><select id="attendance-session"><option value="manual">Choose a training day directly</option>'+dbSessions.slice().sort((a,b)=>b.starts_at.localeCompare(a.starts_at)).map(s=>'<option value="'+esc2(s.id)+'">'+esc2(new Date(s.starts_at).toLocaleString('en-AU',{day:'numeric',month:'short',year:'numeric',hour:'numeric',minute:'2-digit'})+' · '+(s.location||'Team training'))+'</option>').join('')+'</select><label for="attendance-day">Training day</label><input id="attendance-day" type="date" value="'+today()+'"><label for="attendance-title">Session name</label><input id="attendance-title" maxlength="120" value="Team training"></div><p id="attendance-state" role="status" aria-live="polite">Loading register…</p><div id="attendance-summary" class="attendance-summary"></div><label for="attendance-search">Find a player</label><input id="attendance-search" type="search" placeholder="Search by name or position" autocomplete="off"><p class="mini">Each player starts as Not marked. Selecting a status does not save it automatically.</p><div id="attendance-players"></div><div class="tools attendance-actions"><button class="secondary" id="attendance-present" disabled>MARK ALL PRESENT</button><button class="primary" id="attendance-save" disabled>SAVE ATTENDANCE</button><button class="secondary" id="attendance-reload">RELOAD SAVED REGISTER</button></div>';
+ const grid=section.querySelector('.attendance-date-grid');for(const label of [...grid.querySelectorAll('label')]){const control=label.nextElementSibling,field=document.createElement('div');field.className='attendance-field';label.before(field);field.append(label,control)}
  const intro=app.querySelector('.section-head');if(intro)intro.after(section);else app.prepend(section);
  const date=section.querySelector('#attendance-day'),session=section.querySelector('#attendance-session'),title=section.querySelector('#attendance-title'),status=section.querySelector('#attendance-state'),root=section.querySelector('#attendance-players'),summary=section.querySelector('#attendance-summary'),saveButton=section.querySelector('#attendance-save'),allButton=section.querySelector('#attendance-present');
  let revision=0,day=date.value,sessionValue='manual',loadId=0,loaded=false,marks={};
  const names={present:'Present',absent:'Absent',excused:'Excused',unmarked:'Not marked'};
  const changed=()=>{window.cometsAttendanceDirty=true;status.textContent='Unsaved attendance changes.';summarise()};
- function summarise(){summary.textContent='Active squad: '+Object.entries(names).map(([key,label])=>dbPlayers.filter(p=>(marks[p.id]||'unmarked')===key).length+' '+label.toLowerCase()).join(' · ')}
+ function summarise(){summary.innerHTML=Object.entries(names).map(([key,label])=>'<div class="attendance-metric status-'+key+'"><strong>'+dbPlayers.filter(p=>(marks[p.id]||'unmarked')===key).length+'</strong><span>'+label+'</span></div>').join('')}
  function draw(){
-  root.innerHTML=dbPlayers.length?dbPlayers.slice().sort((a,b)=>a.full_name.localeCompare(b.full_name)).map(p=>'<div class="attendance-row"><div><b>'+esc2(p.full_name)+'</b><small>'+esc2(p.position||'')+'</small></div><div><label for="attendance-'+esc2(p.id)+'">Attendance for '+esc2(p.full_name)+'</label><select id="attendance-'+esc2(p.id)+'" data-attendance-player="'+esc2(p.id)+'">'+Object.entries(names).map(([key,label])=>'<option value="'+key+'" '+((marks[p.id]||'unmarked')===key?'selected':'')+'>'+label+'</option>').join('')+'</select></div></div>').join(''):'<p>Add active players in Team → Squad before marking attendance.</p>';
+  const search=section.querySelector('#attendance-search').value.trim().toLocaleLowerCase('en-AU');
+  const visible=dbPlayers.filter(p=>[p.full_name,p.position].join(' ').toLocaleLowerCase('en-AU').includes(search));
+  root.innerHTML=visible.length?visible.slice().sort((a,b)=>a.full_name.localeCompare(b.full_name)).map(p=>'<fieldset class="attendance-row"><legend>'+esc2(p.full_name)+'</legend><p class="attendance-position">'+esc2(p.position||'Position not set')+'</p><div class="attendance-choices">'+Object.entries(names).map(([key,label])=>'<label class="attendance-choice status-'+key+'" for="attendance-'+esc2(p.id)+'-'+key+'"><input type="radio" name="attendance-'+esc2(p.id)+'" id="attendance-'+esc2(p.id)+'-'+key+'" value="'+key+'" data-attendance-player="'+esc2(p.id)+'" '+((marks[p.id]||'unmarked')===key?'checked':'')+'><span>'+label+'</span></label>').join('')+'</div></fieldset>').join(''):'<p class="attendance-empty">'+(dbPlayers.length?'No matching players. Try a different name or position.':'Add active players in Team → Squad before marking attendance.')+'</p>';
   const archived=dbArchivedPlayers.filter(p=>marks[p.id]!==undefined);if(archived.length){const history=document.createElement('details');history.innerHTML='<summary>Archived players in this register ('+archived.length+')</summary>'+archived.map(p=>'<p>'+esc2(p.full_name)+' · '+esc2(names[marks[p.id]]||'Not marked')+'</p>').join('');root.append(history)}
-  root.querySelectorAll('[data-attendance-player]').forEach(select=>select.onchange=()=>{marks[select.dataset.attendancePlayer]=select.value;changed()});summarise();CometsUI.polish();
+  root.querySelectorAll('[data-attendance-player]').forEach(input=>input.onchange=()=>{marks[input.dataset.attendancePlayer]=input.value;changed()});summarise();CometsUI.polish();
  }
  async function readRegister(){
   const request=++loadId;window.cometsAttendanceDirty=false;loaded=false;saveButton.disabled=true;allButton.disabled=true;status.textContent='Loading register…';
@@ -216,6 +242,7 @@ function appendAttendance(app){
  session.onchange=async()=>{const next=session.value;if(!await discard()){session.value=sessionValue;return}sessionValue=next;const scheduled=dbSessions.find(s=>s.id===next);if(scheduled)date.value=localDate(scheduled.starts_at);date.disabled=!!scheduled;day=date.value;await readRegister()};
  date.onchange=async()=>{const next=date.value;if(!next||!await discard()){date.value=day;return}day=next;await readRegister()};
  title.oninput=()=>{if(loaded)changed()};
+ section.querySelector('#attendance-search').oninput=draw;section.querySelector('#attendance-search').onsearch=draw;
  allButton.onclick=()=>{if(!loaded)return;dbPlayers.forEach(p=>marks[p.id]='present');draw();changed()};
  section.querySelector('#attendance-reload').onclick=async()=>{if(await discard())await readRegister()};
  saveButton.onclick=()=>safe(async()=>{
