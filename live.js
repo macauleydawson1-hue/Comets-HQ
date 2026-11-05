@@ -21,6 +21,9 @@ const safe=async(fn)=>{
 const renderBase=window.render;
 function refresh(){if(!ready)return;previewMode=coach()?'coach':'player';if(!coach()){previewPlayerId=myId||'';}window.render();}
 function enhance(){
+ const current=['gym','workout','nutrition','progress'].includes(state.tab)?'training':['profile','squad'].includes(state.tab)?'team':['sessions','matchstats'].includes(state.tab)?'matches':state.tab;
+ document.getElementById('tabs').innerHTML=[['home','Home'],['team','Team'],['matches','Matches'],['stats','Stats'],['training',coach()?'Training':'My Training']].map(([id,label])=>'<button class="'+(current===id?'active':'')+'" onclick="changeTab(\''+id+'\')">'+label+'</button>').join('');
+
  document.querySelector('.mode-switch-wrap')?.setAttribute('hidden','');
  const a=document.querySelector('.athlete');if(a)a.textContent=(displayName || (coach()?'COACH DASHBOARD':'PLAYER DASHBOARD')).toUpperCase();
  if(state.tab==='home'){const intro=document.querySelector('#app .dashboard-intro h2');if(intro)intro.textContent='Welcome back, '+firstName();}
@@ -100,7 +103,7 @@ async function showSidelinePreview(app){
 }
 function account(){
  let el=document.getElementById('comets-account');if(!el){el=document.createElement('div');el.id='comets-account';el.className='account-mini';document.querySelector('header').before(el)}
- el.innerHTML='<button class="account-mini-btn" id="acc-btn" aria-expanded="false" aria-controls="acc-panel">ACCOUNT ⚙</button><div id="acc-panel" class="account-mini-menu" hidden><p class="mini">'+esc2(displayName||'Comets member')+'</p><p class="mini">'+esc2(user.email)+'</p><button class="secondary" id="acc-name">Edit my name</button><button class="secondary" id="acc-password">Set or change password</button><button class="secondary" id="acc-install">Install app</button><button class="secondary" id="acc-out">Sign out</button>'+(coach()?'<button class="secondary" id="acc-access">Member access</button><button class="secondary" id="acc-invite">Invite by email</button>':'')+'</div>';
+ el.innerHTML='<button class="account-mini-btn" id="acc-btn" aria-expanded="false" aria-controls="acc-panel">ACCOUNT · '+(coach()?'COACH':'PLAYER')+'</button><div id="acc-panel" class="account-mini-menu" hidden><p class="mini">'+esc2(displayName||'Comets member')+' · '+(coach()?'Coach':'Player')+'</p><p class="mini">'+esc2(user.email)+'</p><button class="secondary" id="acc-name">Edit my name</button><button class="secondary" id="acc-password">Set or change password</button><button class="secondary" id="acc-install">Install app</button><button class="secondary" id="acc-out">Sign out</button>'+(coach()?'<button class="secondary" id="acc-access">Member access</button><button class="secondary" id="acc-invite">Invite by email</button>':'')+'</div>';
  const button=el.querySelector('#acc-btn'),panel=el.querySelector('#acc-panel');button.onclick=()=>{panel.hidden=!panel.hidden;button.setAttribute('aria-expanded',String(!panel.hidden))};
  el.querySelector('#acc-out').onclick=()=>safe(async()=>{const {error}=await db.auth.signOut();if(error)throw error;clearClubData();login()});
  el.querySelector('#acc-name').onclick=()=>safe(async()=>{const result=await CometsUI.dialog({title:'Edit your name',fields:[{name:'name',label:'Display name',value:displayName,maxLength:100}]});if(!result)return;const name=result.name.replace(/\s+/g,' ');if(!name)throw new Error('Enter a display name.');const {error}=await db.from('profiles').update({display_name:name}).eq('id',user.id);if(error)throw error;displayName=name;account();refresh();alert('Name updated.')});

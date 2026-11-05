@@ -11,3 +11,5 @@ body.compact-header header{padding:16px}body.compact-header header .wrap{display
 main button,main button.tinybtn{min-height:44px}
 
 #comets-login-form[hidden],#activation-form[hidden]{display:none!important}#access-code:empty{display:none}#access-code:not(:empty){margin-top:20px;padding:16px;background:#fff7df;border:1px solid #dfbc59;border-radius:12px}#activation-result{font-family:monospace;letter-spacing:.05em}#access-list .club-row{border-bottom:1px solid #eadfe0;padding:12px 0}
+
+@media(max-width:480px){.account-mini-btn{font-size:11px;padding:8px}body.compact-header header .wrap{padding-right:120px}body.compact-header header h1{font-size:16px!important}body.compact-header header h1 .preseason{font-size:18px!important}}

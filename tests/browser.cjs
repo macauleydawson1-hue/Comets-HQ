@@ -23,7 +23,7 @@ function mock(role){
  const browser=await chromium.launch({executablePath:process.env.CHROMIUM_PATH||'/usr/bin/chromium',headless:true,args:['--no-sandbox']});let screens=0;
  try{
  for(const role of ['coach','player'])for(const width of [320,390,768,1440]){
- const page=await browser.newPage({viewport:{width,height:844},timezoneId:'Australia/Sydney',serviceWorkers:'block'});const errors=[];page.on('pageerror',e=>errors.push(e.message));
+ const page=await browser.newPage({viewport:{width,height:844},timezoneId:'Australia/Sydney',serviceWorkers:'block'});const errors=[];page.on('pageerror',e=>{errors.push(e.message);console.error(e.message)});
  await page.route('https://**/*',route=>route.request().url().includes('cdn.jsdelivr.net')?route.fulfill({contentType:'application/javascript',body:'('+mock.toString()+')('+JSON.stringify(role)+');'}):route.abort());
  await page.goto(base);await page.waitForFunction(()=>document.getElementById('auth-wall').hidden);
  for(const tab of ['home','team','matches','stats','training',...(role==='coach'?['sessions','playerprograms','profile']:[])]){
@@ -31,8 +31,12 @@ function mock(role){
  assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false,`${role}/${width}/${tab}: overflow`);
  assert.equal(await page.locator('main input:not([type=hidden]),main select,main textarea').evaluateAll(fields=>fields.filter(f=>!f.labels?.length&&!f.hasAttribute('aria-label')).length),0,`${tab}: labels`);
  if(tab!=='home')assert(await page.locator('header').evaluate(e=>e.getBoundingClientRect().height)<140);
+ assert.deepEqual(await page.locator('#tabs button').allTextContents(),['Home','Team','Matches','Stats',role==='coach'?'Training':'My Training']);assert.match(await page.locator('#acc-btn').innerText(),role==='coach'?/COACH/:/PLAYER/);
  screens++;
  }
+ page.once('dialog',d=>d.accept());
+ await page.evaluate(()=>importData({files:[new File([JSON.stringify(state)],'backup.json',{type:'application/json'})]}));
+ await page.waitForTimeout(80);assert.deepEqual(await page.locator('#tabs button').allTextContents(),['Home','Team','Matches','Stats',role==='coach'?'Training':'My Training']);
  await page.evaluate(()=>changeTab('home'));await page.locator('#sideline-all').click();await page.locator('[data-delete-post="post1"]').waitFor();assert.equal(await page.locator('[data-delete-post="post2"]').count(),role==='coach'?1:0);
  await page.locator('[data-delete-post="post1"]').click();await page.getByRole('button',{name:'Cancel',exact:true}).click();assert.equal(await page.locator('[data-delete-post="post1"]').count(),1);
  await page.locator('[data-delete-post="post1"]').click();await page.getByRole('button',{name:'Confirm',exact:true}).click();await page.waitForFunction(()=>!document.querySelector('[data-delete-post="post1"]'));assert.equal(await page.getByText('Another member announcement',{exact:true}).count(),1);
