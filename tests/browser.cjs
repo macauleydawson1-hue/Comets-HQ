@@ -36,6 +36,10 @@ function mock(role){
  if(tab!=='home')assert(await page.locator('header').evaluate(e=>e.getBoundingClientRect().height)<140);
  assert.deepEqual(await page.locator('#tabs button').allTextContents(),['Home','Team','Matches','Stats',role==='coach'?'Training':'My Training']);assert.match(await page.locator('#acc-btn').innerText(),role==='coach'?/COACH/:/PLAYER/);
  assert.equal(await page.getByRole('button',{name:/team standards/i}).count(),0);
+ if(role==='coach'&&tab==='team'){assert.deepEqual(await page.locator('.inner-tabs button').allTextContents(),['SQUAD','TEAM SELECTION']);await page.getByRole('heading',{name:'First Grade squad'}).waitFor();await page.getByRole('button',{name:'TEAM SELECTION',exact:true}).click();await page.locator('#sel-fixture').waitFor();assert.equal(await page.getByRole('heading',{name:'Progress tracker'}).count(),0);await page.getByRole('button',{name:'SQUAD',exact:true}).click();await page.locator('#player-name').waitFor()}
+ if(tab==='matches'){await page.getByRole('heading',{name:/match centre/i}).waitFor();assert.equal(await page.getByRole('heading',{name:'Progress tracker'}).count(),0)}
+ if(tab==='stats')await page.getByRole('heading',{name:'PLAYER STATISTICS',exact:true}).waitFor();
+ if(tab==='training')assert.equal(await page.getByRole('heading',{name:'Progress tracker'}).count(),0);
  screens++;
  }
  page.once('dialog',d=>d.accept());

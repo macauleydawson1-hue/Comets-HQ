@@ -212,7 +212,21 @@ async function showFeed(){const app=document.getElementById('app');const [posts,
  await showFeed();alert('Announcement deleted.');
 }));app.querySelectorAll('[data-pin]').forEach(b=>b.onclick=()=>safe(async()=>{const p=posts.find(x=>x.id===b.dataset.pin);const {error}=await db.from('announcements').update({pinned:!p.pinned,official:true}).eq('id',p.id);if(error)throw error;await showFeed()}))}
 // Existing app has its own render. Wrap it, never replace the original tab markup/CSS.
-window.render=function(){renderBase();if(ready)enhance()};
+function liveTeam(){
+ if(!['squad','selection'].includes(teamSubtab))teamSubtab='squad';
+ return '<div class="section-head"><div class="club-kicker">FIRST GRADE</div><h2>TEAM</h2></div><div class="inner-tabs">'+[['squad','SQUAD'],['selection','TEAM SELECTION']].map(([id,label])=>'<button class="'+(teamSubtab===id?'active':'')+'" onclick="teamSection(\''+id+'\')">'+label+'</button>').join('')+'</div>'+(teamSubtab==='squad'?squadView():'');
+}
+// Route signed-in screens explicitly. Legacy render wrappers must not decide
+// which club page is displayed or fall through to the personal progress page.
+window.render=function(){
+ if(!ready){renderBase();return}
+ previewMode=coach()?'coach':'player';if(!coach())previewPlayerId=myId||'';
+ const pages=coach()?{home,team:liveTeam,squad:squadView,matches:matchesView,sessions:sessionsView,profile:profileView,training:trainingHub,playerprograms:()=>'',stats:()=>'',access:()=>'',matchstats:()=>'',backup:backupView,gym:workouts,workout:workoutView,nutrition,progress}:{home:playerHome,team:playerTeam,matches:playerMatches,stats:()=>'',training:()=>''};
+ const page=pages[state.tab];if(!page)state.tab='home';
+ document.getElementById('app').innerHTML=(page||pages.home)();
+ const totals=matchStats();document.getElementById('club-stats').innerHTML='<div class="stat"><strong>'+esc2(club.season)+'</strong><small>Season</small></div><div class="stat"><strong>1ST GRADE</strong><small>Division</small></div><div class="stat"><strong>'+totals.w+'–'+totals.l+'–'+totals.d+'</strong><small>W–L–D</small></div>';
+ enhance();
+};
 async function boot(){
  activationForm();
  const loginButton=document.querySelector('#comets-login-form button[type=submit]');
