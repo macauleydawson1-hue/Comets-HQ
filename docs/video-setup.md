@@ -6,7 +6,17 @@ In the existing Supabase project, open SQL Editor → New query. Run the full co
 
 The frontend should be deployed after this succeeds. If it is deployed before installation, Video shows an explicit unavailable/retry message; existing app pages remain usable. Backend installation and real-account acceptance are not proven by local mocks.
 
-## How it works
+## YouTube (recommended default)
+
+Coaches can choose YouTube link, enter a normal watch/share/Shorts/live video URL, add the title, game week and analysis, and save a draft. Publish when ready. Existing direct uploads remain supported through the Video source selector. No additional SQL or Edge Function deployment is needed for YouTube after the original video setup.
+
+YouTube stores and streams the footage; Supabase stores only the library reference and coaching analysis. The existing owner-prefixed object_path field uses the reserved `user-id/youtube/video-id/random-uuid` reference namespace, satisfying existing insert policies without creating a Storage object. Existing file paths retain their original meaning. Each entry can have its own game week and analysis, even if it references the same YouTube video.
+
+Only recognised YouTube hosts and valid 11-character IDs are accepted. The embed URL is built from the validated ID; arbitrary iframe markup is never accepted. Players load a responsive youtube-nocookie.com iframe on demand, with fullscreen and a separate Open in YouTube fallback. The app does not autoplay. Removing a YouTube entry deletes its app analysis/reference, not the original YouTube video, and never invokes Storage deletion.
+
+Use Unlisted for footage you do not want in YouTube search. Anyone with the URL can still watch or share it, even before it is published in COMETS HQ; the app's draft/published permissions control library visibility, not YouTube access. Private, age-restricted, copyright-blocked or embedding-disabled videos may not play inside the app. Enable embedding in YouTube and test the intended footage. YouTube branding and advertising remain controlled by YouTube. This release does not transcode, download or back up YouTube footage.
+
+## Direct uploads (optional)
 
 - Coaches and players have Home, Team, Matches, Stats, Training/My Training and Video navigation. Nutrition is within Training rather than a separate main tab.
 - Coaches open Video to upload MP4, WebM or MOV clips up to 50 MiB. Prefer MP4 with H.264 video and AAC audio for broad phone/desktop playback. No transcoding is performed; a supported file extension alone cannot guarantee codec compatibility. Full-match footage should be trimmed into short analysis clips before upload. Supabase plan storage and bandwidth limits apply.
@@ -29,3 +39,7 @@ Member Access → choose Coach. The squad selector is disabled and cleared; no s
 6. Check player writes and anonymous reads are denied by database/Storage policies. Do not change the bucket to public.
 
 Local tests (`node tests/browser.cjs`) use simulated Storage/metadata services and cover 60 populated phone/tablet/desktop screens, draft upload, publication, analysis editing, deletion, published-only player queries and inline player controls. These do not verify live storage quotas, codecs, actual Supabase RLS enforcement or device playback; run the acceptance checks above with real accounts before wider use.
+
+## YouTube acceptance check
+
+Upload an Unlisted test video to YouTube with embedding enabled. In COMETS HQ choose Video → YouTube link, add the link and analysis, save as draft, load the embedded video, then publish. Verify playback in a separate player account on a phone and computer. Test Open in YouTube if embedding is blocked. Actual YouTube playback and account-specific restrictions require this live check; local tests validate URL handling, iframe attributes, library operations and unchanged direct uploads using simulated services. Run `node tests/video-utils.cjs` for link-parser tests.
