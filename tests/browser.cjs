@@ -12,7 +12,7 @@ function mock(role){
  if(method!=='select'){
  window.testWrites.push({table,method,payload});if(window.testFail){r({error:{message:'Simulated network failure'}});return}
  if(table==='player_training'&&method==='insert')records[table].push({...payload,id:'new-log',logged_at:new Date().toISOString()});
- if(table==='player_training'&&method==='update')records[table]=records[table].map(x=>filters.every(([k,v])=>x[k]===v)?{...x,...payload}:x);
+ if(['player_training','squad_players'].includes(table)&&method==='update')records[table]=records[table].map(x=>filters.every(([k,v])=>x[k]===v)?{...x,...payload}:x);
  if(table==='player_training'&&method==='delete')records[table]=records[table].filter(x=>!filters.every(([k,v])=>x[k]===v));
  }
  r({data:records[table]||[],error:null});},40)).then(resolve)};return q;
@@ -61,6 +61,9 @@ function mock(role){
  await page.evaluate(()=>changeTab('access'));await page.locator('#access-name').fill('New Player');await page.locator('#access-email').fill('new@example.invalid');await page.locator('#access-player').selectOption('p1');await page.locator('#access-issue').click();await page.locator('#activation-result').waitFor();assert.match(await page.locator('#activation-result').inputValue(),/^ABCD-/);assert.equal(await page.evaluate(()=>accessCall.action),'list');
  await page.evaluate(()=>teamSection('selection'));await page.waitForTimeout(80);assert.equal(await page.locator('[data-slot="0"]').inputValue(),'p1');
  await page.evaluate(()=>teamSection('availability'));assert.equal(await page.locator('select[onchange*="setAvailability"]').count(),0);
+ await page.evaluate(()=>teamSection('squad'));await page.getByRole('button',{name:'Archive',exact:true}).click();await page.getByRole('button',{name:'Cancel',exact:true}).click();assert.equal(await page.getByText('Alex A Very Long Player Name',{exact:true}).count(),1);
+ await page.getByRole('button',{name:'Archive',exact:true}).click();await page.getByRole('button',{name:'Confirm',exact:true}).click();await page.waitForFunction(()=>!document.querySelector('[onclick*=playerRemove]'));assert.equal(await page.evaluate(()=>testWrites.filter(w=>w.table==='squad_players'&&w.method==='delete').length),0);assert.equal(await page.evaluate(()=>testWrites.some(w=>w.table==='squad_players'&&w.method==='update'&&w.payload.active===false)),true);
+
  }
  assert.equal(await page.evaluate(()=>JSON.parse(localStorage.getItem('rlhq-v1')).club.players),undefined);
  await page.locator('#acc-btn').click();await page.locator('#acc-out').click();await page.waitForFunction(()=>!document.getElementById('auth-wall').hidden);assert.equal(await page.evaluate(()=>club.players.length),0);
