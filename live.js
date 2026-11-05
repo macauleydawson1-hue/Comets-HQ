@@ -84,8 +84,12 @@ function renderLiveStats(app){
  show('cards');
 }
 async function showSidelinePreview(app){
- const slot=app.querySelector('.sideline-feature');
- if(!slot)return;
+ let slot=app.querySelector('.sideline-feature');
+ if(!slot){
+  slot=document.createElement('section');slot.className='card sideline-feature';
+  const links=app.querySelector('.home-links');if(links)links.before(slot);else app.append(slot);
+ }
+
  // Keep the original gold Sideline card in its original homepage position.
  slot.innerHTML='<div class="notice-title"><div><div class="club-kicker">TEAM COMMUNICATION</div><h3>THE SIDELINE</h3></div><button class="secondary tinybtn" id="sideline-all">VIEW ALL</button></div><p class="muted">Loading latest announcement…</p>';
  slot.querySelector('#sideline-all').onclick=()=>safe(showFeed);
@@ -103,8 +107,9 @@ async function showSidelinePreview(app){
 }
 function account(){
  let el=document.getElementById('comets-account');if(!el){el=document.createElement('div');el.id='comets-account';el.className='account-mini';document.querySelector('header').before(el)}
- el.innerHTML='<button class="account-mini-btn" id="acc-btn" aria-expanded="false" aria-controls="acc-panel">ACCOUNT · '+(coach()?'COACH':'PLAYER')+'</button><div id="acc-panel" class="account-mini-menu" hidden><p class="mini">'+esc2(displayName||'Comets member')+' · '+(coach()?'Coach':'Player')+'</p><p class="mini">'+esc2(user.email)+'</p><button class="secondary" id="acc-name">Edit my name</button><button class="secondary" id="acc-password">Set or change password</button><button class="secondary" id="acc-install">Install app</button><button class="secondary" id="acc-out">Sign out</button>'+(coach()?'<button class="secondary" id="acc-access">Member access</button><button class="secondary" id="acc-invite">Invite by email</button>':'')+'</div>';
+ el.innerHTML='<button class="account-mini-btn" id="acc-btn" aria-expanded="false" aria-controls="acc-panel">ACCOUNT · '+(coach()?'COACH':'PLAYER')+'</button><div id="acc-panel" class="account-mini-menu" hidden><p class="mini">'+esc2(displayName||'Comets member')+' · '+(coach()?'Coach':'Player')+'</p><p class="mini">'+esc2(user.email)+'</p><button class="secondary" id="acc-name">Edit my name</button><button class="secondary" id="acc-sideline">The Sideline — announcements</button><button class="secondary" id="acc-password">Set or change password</button><button class="secondary" id="acc-install">Install app</button><button class="secondary" id="acc-out">Sign out</button>'+(coach()?'<button class="secondary" id="acc-access">Member access</button><button class="secondary" id="acc-invite">Invite by email</button>':'')+'</div>';
  const button=el.querySelector('#acc-btn'),panel=el.querySelector('#acc-panel');button.onclick=()=>{panel.hidden=!panel.hidden;button.setAttribute('aria-expanded',String(!panel.hidden))};
+ el.querySelector('#acc-sideline').onclick=()=>safe(async()=>{CometsUI.closeAccount();await showFeed()});
  el.querySelector('#acc-out').onclick=()=>safe(async()=>{const {error}=await db.auth.signOut();if(error)throw error;clearClubData();login()});
  el.querySelector('#acc-name').onclick=()=>safe(async()=>{const result=await CometsUI.dialog({title:'Edit your name',fields:[{name:'name',label:'Display name',value:displayName,maxLength:100}]});if(!result)return;const name=result.name.replace(/\s+/g,' ');if(!name)throw new Error('Enter a display name.');const {error}=await db.from('profiles').update({display_name:name}).eq('id',user.id);if(error)throw error;displayName=name;account();refresh();alert('Name updated.')});
  el.querySelector('#acc-password').onclick=()=>safe(async()=>{const result=await CometsUI.dialog({title:'Set your password',fields:[{name:'password',label:'New password (at least 8 characters)',type:'password',minLength:8},{name:'repeat',label:'Repeat new password',type:'password',minLength:8}]});if(!result)return;if(result.password!==result.repeat)throw new Error('The passwords do not match.');const {error}=await db.auth.updateUser({password:result.password});if(error)throw error;alert('Password updated. You can use it next time you sign in.')});

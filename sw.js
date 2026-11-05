@@ -1,5 +1,5 @@
 /* COMETS HQ PWA shell cache: never cache private API responses. */
-const CACHE='comets-hq-v7-0-7-shell';
+const CACHE='comets-hq-v7-0-8-shell';
 const ASSETS=['./','./index.html','./live.js','./ui.js','./polish.css','./manifest.webmanifest','./comets-logo.png','./apple-touch-icon.png','./icon-192.png','./icon-512.png'];
 self.addEventListener('install',event=>{event.waitUntil(caches.open(CACHE).then(c=>c.addAll(ASSETS)).then(()=>self.skipWaiting()))});
 self.addEventListener('activate',event=>{event.waitUntil(caches.keys().then(keys=>Promise.all(keys.filter(k=>k.startsWith('comets-hq-')&&k!==CACHE).map(k=>caches.delete(k)))).then(()=>self.clients.claim()))});

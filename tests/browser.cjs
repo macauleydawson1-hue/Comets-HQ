@@ -26,6 +26,9 @@ function mock(role){
  const page=await browser.newPage({viewport:{width,height:844},timezoneId:'Australia/Sydney',serviceWorkers:'block'});const errors=[];page.on('pageerror',e=>{errors.push(e.message);console.error(e.message)});
  await page.route('https://**/*',route=>route.request().url().includes('cdn.jsdelivr.net')?route.fulfill({contentType:'application/javascript',body:'('+mock.toString()+')('+JSON.stringify(role)+');'}):route.abort());
  await page.goto(base);await page.waitForFunction(()=>document.getElementById('auth-wall').hidden);
+ // The live bridge must restore announcements even if legacy Home markup omits its slot.
+ await page.evaluate(()=>{for(const name of ['home','playerHome']){const original=window[name];window[name]=()=>{const wrapper=document.createElement('div');wrapper.innerHTML=original();wrapper.querySelectorAll('.sideline-feature').forEach(e=>e.remove());return wrapper.innerHTML}}changeTab('home')});
+ await page.locator('#sideline-all').waitFor();assert.equal(await page.locator('.sideline-feature').count(),1);assert.equal(await page.locator('#acc-sideline').count(),1);
  for(const tab of ['home','team','matches','stats','training',...(role==='coach'?['sessions','playerprograms','profile']:[])]){
  await page.evaluate(t=>{if(t==='profile')selectedProfile='p1';changeTab(t)},tab);await page.waitForTimeout(60);
  assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false,`${role}/${width}/${tab}: overflow`);
