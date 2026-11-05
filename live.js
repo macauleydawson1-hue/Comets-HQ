@@ -13,7 +13,7 @@ const write=async(t,method,obj,id)=>{let q=db.from(t);q=method==='insert'?q.inse
 const safe=async(fn)=>{
  if(busy)return;
  if(!navigator.onLine){CometsUI.notify('You’re offline. Reconnect before saving.',true);return}
- busy=true;const buttons=[...document.querySelectorAll('main button,.account-mini button,#comets-login-form button')].filter(b=>!b.disabled);
+ busy=true;const buttons=[...document.querySelectorAll('main button,.account-mini button,#comets-login-form button,#activation-form button')].filter(b=>!b.disabled);
  buttons.forEach(b=>b.disabled=true);document.getElementById('app').setAttribute('aria-busy','true');
  try{await fn()}catch(e){const message='Unable to complete this action: '+err(e);CometsUI.notify(message,true);if(!wall.hidden)return;notice.textContent=message}
  finally{busy=false;buttons.forEach(b=>b.disabled=false);document.getElementById('app').removeAttribute('aria-busy')}
@@ -26,7 +26,8 @@ function enhance(){
  if(state.tab==='home'){const intro=document.querySelector('#app .dashboard-intro h2');if(intro)intro.textContent='Welcome back, '+firstName();}
  document.getElementById('preview-warning')?.setAttribute('hidden','');
  const app=document.getElementById('app');if(!app)return;
- if(state.tab==='home')showSidelinePreview(app);
+ if(state.tab==='access'){if(coach())renderAccess(app);else app.innerHTML='<section class="card"><h2>Coach access required</h2></section>';CometsUI.polish();return}
+ if(state.tab==='home'){showSidelinePreview(app);if(coach()){const section=document.createElement('section');section.className='card';section.innerHTML='<h3>Coach administration</h3><p>Issue activation codes for coaches and players.</p><button class="primary" onclick="changeTab(\'access\')">MEMBER ACCESS</button>';app.append(section)}}
  if(state.tab==='stats')renderLiveStats(app);
 
  if(state.tab==='team'&&coach()&&teamSubtab==='availability'){
@@ -99,13 +100,13 @@ async function showSidelinePreview(app){
 }
 function account(){
  let el=document.getElementById('comets-account');if(!el){el=document.createElement('div');el.id='comets-account';el.className='account-mini';document.querySelector('header').before(el)}
- el.innerHTML='<button class="account-mini-btn" id="acc-btn" aria-expanded="false" aria-controls="acc-panel">ACCOUNT ⚙</button><div id="acc-panel" class="account-mini-menu" hidden><p class="mini">'+esc2(displayName||'Comets member')+'</p><p class="mini">'+esc2(user.email)+'</p><button class="secondary" id="acc-name">Edit my name</button><button class="secondary" id="acc-password">Set or change password</button><button class="secondary" id="acc-install">Install app</button><button class="secondary" id="acc-out">Sign out</button>'+(coach()?'<button class="secondary" id="acc-invite">Invite member</button>':'')+'</div>';
+ el.innerHTML='<button class="account-mini-btn" id="acc-btn" aria-expanded="false" aria-controls="acc-panel">ACCOUNT ⚙</button><div id="acc-panel" class="account-mini-menu" hidden><p class="mini">'+esc2(displayName||'Comets member')+'</p><p class="mini">'+esc2(user.email)+'</p><button class="secondary" id="acc-name">Edit my name</button><button class="secondary" id="acc-password">Set or change password</button><button class="secondary" id="acc-install">Install app</button><button class="secondary" id="acc-out">Sign out</button>'+(coach()?'<button class="secondary" id="acc-access">Member access</button><button class="secondary" id="acc-invite">Invite by email</button>':'')+'</div>';
  const button=el.querySelector('#acc-btn'),panel=el.querySelector('#acc-panel');button.onclick=()=>{panel.hidden=!panel.hidden;button.setAttribute('aria-expanded',String(!panel.hidden))};
  el.querySelector('#acc-out').onclick=()=>safe(async()=>{const {error}=await db.auth.signOut();if(error)throw error;clearClubData();login()});
  el.querySelector('#acc-name').onclick=()=>safe(async()=>{const result=await CometsUI.dialog({title:'Edit your name',fields:[{name:'name',label:'Display name',value:displayName,maxLength:100}]});if(!result)return;const name=result.name.replace(/\s+/g,' ');if(!name)throw new Error('Enter a display name.');const {error}=await db.from('profiles').update({display_name:name}).eq('id',user.id);if(error)throw error;displayName=name;account();refresh();alert('Name updated.')});
  el.querySelector('#acc-password').onclick=()=>safe(async()=>{const result=await CometsUI.dialog({title:'Set your password',fields:[{name:'password',label:'New password (at least 8 characters)',type:'password',minLength:8},{name:'repeat',label:'Repeat new password',type:'password',minLength:8}]});if(!result)return;if(result.password!==result.repeat)throw new Error('The passwords do not match.');const {error}=await db.auth.updateUser({password:result.password});if(error)throw error;alert('Password updated. You can use it next time you sign in.')});
  el.querySelector('#acc-install').onclick=()=>alert(/iPad|iPhone|iPod/.test(navigator.userAgent)?'In Safari, tap Share, then Add to Home Screen.':'Open your browser menu and choose Install app or Add to Home Screen.');
- if(coach())el.querySelector('#acc-invite').onclick=invite;
+ if(coach()){el.querySelector('#acc-invite').onclick=invite;el.querySelector('#acc-access').onclick=()=>{CometsUI.closeAccount();changeTab('access')}}
 }
 function clearClubData(){
  dbPlayers=[];dbFixtures=[];dbSessions=[];dbSelections=[];dbStats=[];dbPrograms=[];dbLogs=[];dbAvailability=[];
@@ -195,10 +196,17 @@ async function invite(){if(!coach())return;await safe(async()=>{
  if(error||data?.error)throw new Error(data?.error||err(error));alert('Invitation sent to '+result.email);
 })}
 async function importLocal(){alert('Import is not enabled in this test build. Export and keep your existing local backup; no data has been overwritten in Supabase.')}
-async function showFeed(){const app=document.getElementById('app');const [posts,likes,comments,profiles]=await Promise.all(['announcements','announcement_likes','announcement_comments','profiles'].map(api));const names=Object.fromEntries(profiles.map(x=>[x.id,x.display_name]));if(posts.length)localStorage.setItem('comets-sideline-seen-'+user.id,posts.reduce((max,p)=>p.created_at>max?p.created_at:max,''));app.innerHTML='<div class="section-head"><h2>THE SIDELINE</h2><button class="secondary" id="feed-back">← BACK</button></div><section class="card"><h3>Share with the team</h3><textarea id="feed-text" placeholder="Team update..."></textarea><button class="primary" id="feed-post">POST</button></section>'+posts.sort((a,b)=>Number(b.pinned)-Number(a.pinned)||b.created_at.localeCompare(a.created_at)).map(p=>'<section class="card"><div class="club-kicker">'+(p.pinned?'PINNED · ':'')+esc2(names[p.author_id]||'Comets member')+'</div><p>'+esc2(p.body)+'</p><button class="secondary tinybtn" data-like="'+p.id+'">LIKE ('+likes.filter(x=>x.announcement_id===p.id).length+')</button> '+(coach()?'<button class="secondary tinybtn" data-pin="'+p.id+'">PIN</button>':'')+'<div class="mini">'+comments.filter(x=>x.announcement_id===p.id).map(x=>'<p>'+esc2(names[x.author_id]||'Member')+': '+esc2(x.body)+'</p>').join('')+'</div><input data-reply="'+p.id+'" placeholder="Reply"><button class="secondary tinybtn" data-send="'+p.id+'">COMMENT</button></section>').join('');document.getElementById('feed-back').onclick=refresh;document.getElementById('feed-post').onclick=()=>safe(async()=>{const body=val('feed-text');if(!body)return;const {error}=await db.from('announcements').insert({author_id:user.id,body});if(error)throw error;await showFeed()});app.querySelectorAll('[data-like]').forEach(b=>b.onclick=()=>safe(async()=>{const id=b.dataset.like;const exists=likes.some(x=>x.announcement_id===id&&x.user_id===user.id);const q=exists?db.from('announcement_likes').delete().eq('announcement_id',id).eq('user_id',user.id):db.from('announcement_likes').insert({announcement_id:id,user_id:user.id});const {error}=await q;if(error)throw error;await showFeed()}));app.querySelectorAll('[data-send]').forEach(b=>b.onclick=()=>safe(async()=>{const body=app.querySelector('[data-reply="'+b.dataset.send+'"]').value.trim();if(!body)return;const {error}=await db.from('announcement_comments').insert({announcement_id:b.dataset.send,author_id:user.id,body});if(error)throw error;await showFeed()}));app.querySelectorAll('[data-pin]').forEach(b=>b.onclick=()=>safe(async()=>{const p=posts.find(x=>x.id===b.dataset.pin);const {error}=await db.from('announcements').update({pinned:!p.pinned,official:true}).eq('id',p.id);if(error)throw error;await showFeed()}))}
+async function showFeed(){const app=document.getElementById('app');const [posts,likes,comments,profiles]=await Promise.all(['announcements','announcement_likes','announcement_comments','profiles'].map(api));const names=Object.fromEntries(profiles.map(x=>[x.id,x.display_name]));if(posts.length)localStorage.setItem('comets-sideline-seen-'+user.id,posts.reduce((max,p)=>p.created_at>max?p.created_at:max,''));app.innerHTML='<div class="section-head"><h2>THE SIDELINE</h2><button class="secondary" id="feed-back">← BACK</button></div><section class="card"><h3>Share with the team</h3><textarea id="feed-text" placeholder="Team update..."></textarea><button class="primary" id="feed-post">POST</button></section>'+posts.sort((a,b)=>Number(b.pinned)-Number(a.pinned)||b.created_at.localeCompare(a.created_at)).map(p=>'<section class="card"><div class="club-kicker">'+(p.pinned?'PINNED · ':'')+esc2(names[p.author_id]||'Comets member')+'</div><p>'+esc2(p.body)+'</p><button class="secondary tinybtn" data-like="'+p.id+'">LIKE ('+likes.filter(x=>x.announcement_id===p.id).length+')</button> '+(coach()?'<button class="secondary tinybtn" data-pin="'+p.id+'">PIN</button>':'')+(coach()||p.author_id===user.id?'<button class="secondary tinybtn" data-delete-post="'+p.id+'">DELETE</button>':'')+'<div class="mini">'+comments.filter(x=>x.announcement_id===p.id).map(x=>'<p>'+esc2(names[x.author_id]||'Member')+': '+esc2(x.body)+'</p>').join('')+'</div><input data-reply="'+p.id+'" placeholder="Reply"><button class="secondary tinybtn" data-send="'+p.id+'">COMMENT</button></section>').join('');document.getElementById('feed-back').onclick=refresh;document.getElementById('feed-post').onclick=()=>safe(async()=>{const body=val('feed-text');if(!body)return;const {error}=await db.from('announcements').insert({author_id:user.id,body});if(error)throw error;await showFeed()});app.querySelectorAll('[data-like]').forEach(b=>b.onclick=()=>safe(async()=>{const id=b.dataset.like;const exists=likes.some(x=>x.announcement_id===id&&x.user_id===user.id);const q=exists?db.from('announcement_likes').delete().eq('announcement_id',id).eq('user_id',user.id):db.from('announcement_likes').insert({announcement_id:id,user_id:user.id});const {error}=await q;if(error)throw error;await showFeed()}));app.querySelectorAll('[data-send]').forEach(b=>b.onclick=()=>safe(async()=>{const body=app.querySelector('[data-reply="'+b.dataset.send+'"]').value.trim();if(!body)return;const {error}=await db.from('announcement_comments').insert({announcement_id:b.dataset.send,author_id:user.id,body});if(error)throw error;await showFeed()}));app.querySelectorAll('[data-delete-post]').forEach(b=>b.onclick=()=>safe(async()=>{
+ const post=posts.find(p=>p.id===b.dataset.deletePost);if(!post||(!coach()&&post.author_id!==user.id))return;
+ if(!await confirm('Delete this announcement and its replies? This cannot be undone.'))return;
+ const {data,error}=await db.rpc('comets_delete_announcement',{p_post_id:post.id});if(error)throw new Error('Announcement could not be deleted. '+err(error));
+ if(data!==true)throw new Error('This announcement was already removed or you do not have permission to delete it.');
+ await showFeed();alert('Announcement deleted.');
+}));app.querySelectorAll('[data-pin]').forEach(b=>b.onclick=()=>safe(async()=>{const p=posts.find(x=>x.id===b.dataset.pin);const {error}=await db.from('announcements').update({pinned:!p.pinned,official:true}).eq('id',p.id);if(error)throw error;await showFeed()}))}
 // Existing app has its own render. Wrap it, never replace the original tab markup/CSS.
 window.render=function(){renderBase();if(ready)enhance()};
 async function boot(){
+ activationForm();
  const loginButton=document.querySelector('#comets-login-form button[type=submit]');
  notice.textContent='Checking your saved sign-in…';
  if(!window.supabase?.createClient){notice.textContent='Secure sign-in is unavailable. Reconnect to the internet and reload.';loginButton.disabled=true;const retry=document.createElement('button');retry.type='button';retry.textContent='RELOAD SIGN-IN';retry.onclick=()=>location.reload();notice.after(retry);return}
@@ -213,5 +221,46 @@ async function boot(){
   const retry=document.createElement('button');retry.type='button';retry.textContent='RETRY SAVED SIGN-IN';retry.onclick=()=>{retry.remove();notice.textContent='Checking saved sign-in…';enter().catch(()=>{notice.textContent='Still unable to connect. Please try again when online.';notice.after(retry)})};notice.after(retry);
  }
 }
+async function accessRequest(body){
+ const {data,error}=await db.functions.invoke('comets-access',{body});
+ if(error){let message='Member access is unavailable. Ask the project administrator to check the activation setup.';try{const detail=await error.context?.json();if(detail?.error)message=detail.error}catch{}throw new Error(message)}
+ if(data?.error)throw new Error(data.error);
+ const valid=body.action==='list'?Array.isArray(data?.codes):body.action==='issue'?typeof data?.code==='string'&&!!data?.expires_at:data?.ok===true;
+ if(!valid)throw new Error('The activation service is not installed correctly. Ask the project administrator to deploy the comets-access function code.');return data;
+}
+async function renderAccess(app){
+ if(!coach())return;
+ app.innerHTML='<div class="section-head"><div class="club-kicker">COACH ADMINISTRATION</div><h2>MEMBER ACCESS</h2><p>Create one-time activation codes for coaches and players. Codes expire after 24 hours.</p></div><section class="card"><h3>Create an activation code</h3><p>Assign the role here. The member cannot change it during activation.</p><label for="access-name">Member name</label><input id="access-name" maxlength="100" autocomplete="name"><label for="access-email">Member email</label><input id="access-email" type="email" autocomplete="email"><label for="access-role">Access level</label><select id="access-role"><option value="player">Player</option><option value="coach">Coach — includes member administration</option></select><label for="access-player">Squad player (required for players)</label><select id="access-player"><option value="">Choose a player</option>'+dbPlayers.map(p=>'<option value="'+esc2(p.id)+'">'+esc2(p.full_name)+'</option>').join('')+'</select><div class="tools"><button class="primary" id="access-issue">GENERATE CODE</button></div><div id="access-code"></div></section><section class="card"><h3>Recent activation codes</h3><p>Revoking an unused code prevents activation. It does not disable an existing account.</p><div id="access-list" role="status">Loading…</div></section>';
+ const list=app.querySelector('#access-list');
+ app.querySelector('#access-issue').onclick=()=>safe(async()=>{
+ const email=app.querySelector('#access-email');if(!email.value||!email.reportValidity()||!val('access-name'))throw new Error('Enter the member’s name and valid email address.');
+ if(val('access-role')==='player'&&!val('access-player'))throw new Error('Choose the linked squad player.');
+ const result=await accessRequest({action:'issue',name:val('access-name'),email:val('access-email'),role:val('access-role'),player_id:val('access-player')||null});
+ const box=app.querySelector('#access-code');box.innerHTML='<h3>Share this code privately</h3><p>This code is shown only here. The member must use the email you entered and choose a password.</p><label for="activation-result">One-time activation code</label><input id="activation-result" readonly><p class="mini" id="activation-expiry"></p><button class="secondary" id="access-copy">COPY CODE</button>';
+ box.querySelector('input').value=result.code;box.querySelector('#activation-expiry').textContent='Expires '+new Date(result.expires_at).toLocaleString('en-AU');
+ box.querySelector('#access-copy').onclick=async()=>{try{await navigator.clipboard.writeText(result.code);alert('Code copied.')}catch{box.querySelector('input').select();alert('Select and copy the code above.')}};
+ await listCodes();CometsUI.polish();
+ });
+ async function listCodes(){try{
+ const {codes}=await accessRequest({action:'list'});if(!list.isConnected)return;
+ list.innerHTML=codes.length?codes.map(c=>{const status=c.status==='pending'&&new Date(c.expires_at)<new Date()?'expired':c.status;return '<div class="club-row"><div><b>'+esc2(c.display_name)+'</b><p class="mini">'+esc2(c.email)+' · '+esc2(c.role)+' · '+esc2(status)+'</p></div>'+(status==='pending'?'<button class="secondary" data-revoke="'+esc2(c.id)+'">REVOKE CODE</button>':'')+'</div>'}).join(''):'<p>No activation codes yet.</p>';
+ list.querySelectorAll('[data-revoke]').forEach(b=>b.onclick=()=>safe(async()=>{if(!await confirm('Revoke this unused activation code?'))return;await accessRequest({action:'revoke',id:b.dataset.revoke});await listCodes();alert('Code revoked.')}));
+ }catch(e){list.textContent=err(e);const retry=document.createElement('button');retry.className='secondary';retry.textContent='RETRY';retry.onclick=listCodes;list.append(retry)}}
+ await listCodes();CometsUI.polish();
+}
+function activationForm(){
+ const form=document.getElementById('comets-login-form');
+ const toggle=document.createElement('button');toggle.type='button';toggle.className='secondary';toggle.id='activate-toggle';toggle.textContent='I HAVE AN ACTIVATION CODE';toggle.setAttribute('aria-expanded','false');
+ const panel=document.createElement('form');panel.id='activation-form';panel.hidden=true;
+ panel.innerHTML='<h3>Activate your membership</h3><p>Use the email and one-time code supplied by your coach. You will sign in with your email and password after activation.</p><label for="activation-email">Invited email address</label><input id="activation-email" type="email" autocomplete="email" required><label for="activation-code">One-time code</label><input id="activation-code" autocomplete="off" spellcheck="false" autocapitalize="characters" required maxlength="64"><label for="activation-password">Choose a password (12–128 characters)</label><input id="activation-password" type="password" autocomplete="new-password" minlength="12" maxlength="128" required><label for="activation-repeat">Repeat password</label><input id="activation-repeat" type="password" autocomplete="new-password" minlength="12" maxlength="128" required><button type="submit">ACTIVATE ACCOUNT</button>';
+ form.after(toggle,panel);
+ toggle.onclick=()=>{panel.hidden=!panel.hidden;form.hidden=!panel.hidden;toggle.setAttribute('aria-expanded',String(!panel.hidden));toggle.textContent=panel.hidden?'I HAVE AN ACTIVATION CODE':'BACK TO SIGN IN';if(!panel.hidden)panel.querySelector('input').focus()};
+ panel.onsubmit=e=>{e.preventDefault();safe(async()=>{
+ const password=panel.querySelector('#activation-password').value;if(password!==panel.querySelector('#activation-repeat').value)throw new Error('The passwords do not match.');
+ await accessRequest({action:'redeem',code:val('activation-code'),email:val('activation-email'),password});
+ document.getElementById('comets-email').value=val('activation-email');panel.reset();panel.hidden=true;form.hidden=false;toggle.textContent='I HAVE AN ACTIVATION CODE';toggle.setAttribute('aria-expanded','false');notice.textContent='Account activated. Sign in with your email and new password.';document.getElementById('comets-password').focus();
+ })};
+}
+
 boot();
 })();

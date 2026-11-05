@@ -1,0 +1,2 @@
+[functions.comets-access]
+verify_jwt = false
