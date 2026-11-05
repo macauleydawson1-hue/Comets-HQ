@@ -52,7 +52,7 @@ Deno.serve(async req=>{
   return reply({ok:true});
  }
  if(action==='issue'){
-  const email=String(body.email||'').trim().toLowerCase(),name=String(body.name||'').trim(),role=body.role,player=body.player_id||null;
+  const email=String(body.email||'').trim().toLowerCase(),name=String(body.name||'').trim(),role=body.role,player=role==='coach'?null:body.player_id||null;
   if(!/^\S+@\S+\.\S+$/.test(email)||email.length>254||!name||name.length>100||!['coach','player'].includes(role)||(role==='player'&&!player))return reply({error:'Enter a name, email, role and a linked player for player accounts.'},400);
   if(player){
    const players=await checked(db.from('squad_players').select('id').eq('id',player).eq('active',true));

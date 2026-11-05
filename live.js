@@ -22,13 +22,14 @@ const renderBase=window.render;
 function refresh(){if(!ready)return;previewMode=coach()?'coach':'player';if(!coach()){previewPlayerId=myId||'';}window.render();}
 function enhance(){
  const current=['gym','workout','nutrition','progress'].includes(state.tab)?'training':['profile','squad'].includes(state.tab)?'team':['sessions','matchstats'].includes(state.tab)?'matches':state.tab;
- document.getElementById('tabs').innerHTML=[['home','Home'],['team','Team'],['matches','Matches'],['stats','Stats'],['training',coach()?'Training':'My Training']].map(([id,label])=>'<button class="'+(current===id?'active':'')+'" onclick="changeTab(\''+id+'\')">'+label+'</button>').join('');
+ document.getElementById('tabs').innerHTML=[['home','Home'],['team','Team'],['matches','Matches'],['stats','Stats'],['training',coach()?'Training':'My Training'],['video','Video']].map(([id,label])=>'<button class="'+(current===id?'active':'')+'" onclick="changeTab(\''+id+'\')">'+label+'</button>').join('');
 
  document.querySelector('.mode-switch-wrap')?.setAttribute('hidden','');
  const a=document.querySelector('.athlete');if(a)a.textContent=(displayName || (coach()?'COACH DASHBOARD':'PLAYER DASHBOARD')).toUpperCase();
  if(state.tab==='home'){const intro=document.querySelector('#app .dashboard-intro h2');if(intro)intro.textContent='Welcome back, '+firstName();}
  document.getElementById('preview-warning')?.setAttribute('hidden','');
  const app=document.getElementById('app');if(!app)return;
+ if(state.tab==='video'){renderVideo(app);CometsUI.polish();return}
  if(state.tab==='access'){if(coach())renderAccess(app);else app.innerHTML='<section class="card"><h2>Coach access required</h2></section>';CometsUI.polish();return}
  if(state.tab==='home'){showSidelinePreview(app);if(coach()){const section=document.createElement('section');section.className='card';section.innerHTML='<h3>Coach administration</h3><p>Issue activation codes for coaches and players.</p><button class="primary" onclick="changeTab(\'access\')">MEMBER ACCESS</button>';app.append(section)}}
  if(state.tab==='stats')renderLiveStats(app);
@@ -223,7 +224,7 @@ function liveTeam(){
 window.render=function(){
  if(!ready){renderBase();return}
  previewMode=coach()?'coach':'player';if(!coach())previewPlayerId=myId||'';
- const pages=coach()?{home,team:liveTeam,squad:squadView,matches:matchesView,sessions:sessionsView,profile:profileView,training:trainingHub,playerprograms:()=>'',stats:()=>'',access:()=>'',matchstats:()=>'',backup:backupView,gym:workouts,workout:workoutView,nutrition,progress}:{home:playerHome,team:playerTeam,matches:playerMatches,stats:()=>'',training:()=>''};
+ const pages=coach()?{home,team:liveTeam,squad:squadView,matches:matchesView,sessions:sessionsView,profile:profileView,video:()=>'',training:trainingHub,playerprograms:()=>'',stats:()=>'',access:()=>'',matchstats:()=>'',backup:backupView,gym:workouts,workout:workoutView,nutrition,progress}:{home:playerHome,team:playerTeam,matches:playerMatches,stats:()=>'',video:()=>'',training:()=>''};
  const page=pages[state.tab];if(!page)state.tab='home';
  document.getElementById('app').innerHTML=(page||pages.home)();
  const totals=matchStats();document.getElementById('club-stats').innerHTML='<div class="stat"><strong>'+esc2(club.season)+'</strong><small>Season</small></div><div class="stat"><strong>1ST GRADE</strong><small>Division</small></div><div class="stat"><strong>'+totals.w+'–'+totals.l+'–'+totals.d+'</strong><small>W–L–D</small></div>';
@@ -252,14 +253,69 @@ async function accessRequest(body){
  const valid=body.action==='list'?Array.isArray(data?.codes):body.action==='issue'?typeof data?.code==='string'&&!!data?.expires_at:data?.ok===true;
  if(!valid)throw new Error('The activation service is not installed correctly. Ask the project administrator to deploy the comets-access function code.');return data;
 }
+async function renderVideo(app){
+ const isCoach=coach();
+ app.innerHTML='<div class="section-head"><div class="club-kicker">FIRST GRADE · GAME REVIEW</div><h2>VIDEO</h2><p>'+ (isCoach?'Upload game clips, add your analysis and publish to the squad.':'Game-week clips and analysis from your coaching staff.')+'</p></div>'+(isCoach?'<section class="card"><h3>Upload a game clip</h3><label for="video-title">Clip title</label><input id="video-title" maxlength="120" placeholder="e.g. Goal-line defence"><label for="video-week">Game week / round</label><input id="video-week" maxlength="100" placeholder="e.g. Round 3 · vs Eels"><label for="video-date">Match date (optional)</label><input id="video-date" type="date"><label for="video-file">Video clip</label><input id="video-file" type="file" accept="video/mp4,video/webm,video/quicktime"><p class="mini">Maximum 50 MB per clip. MP4 (H.264/AAC) is recommended for phones and computers. Trim full-match footage into short clips before uploading.</p><label for="video-analysis">Coaching analysis</label><textarea id="video-analysis" maxlength="10000" placeholder="What went well, what to improve, and key moments (e.g. 00:15 — defensive spacing)."></textarea><div class="tools"><button class="primary" id="video-upload">UPLOAD AS DRAFT</button></div><p class="mini" id="video-upload-status" role="status"></p></section>':'')+'<section class="card video-filter"><label for="video-week-filter">Game week</label><select id="video-week-filter"><option value="">All game weeks</option></select></section><div id="video-list" aria-live="polite">Loading game clips…</div>';
+ const list=app.querySelector('#video-list'),filter=app.querySelector('#video-week-filter');let videos=[];
+ const bucket=()=>db.storage.from('comets-game-video');
+ const check=async promise=>{const {data,error}=await promise;if(error)throw error;return data};
+ async function loadVideos(){
+  try{
+   let query=db.from('comets_game_videos').select('*').order('created_at',{ascending:false});if(!isCoach)query=query.eq('published',true);
+   videos=await check(query)||[];if(!list.isConnected)return;
+   const selected=filter.value;filter.innerHTML='<option value="">All game weeks</option>'+[...new Set(videos.map(v=>v.game_week))].map(w=>'<option value="'+esc2(w)+'">'+esc2(w)+'</option>').join('');filter.value=selected;draw();
+  }catch(e){if(!list.isConnected)return;list.innerHTML='<section class="card"><h3>Video unavailable</h3><p>Unable to load game clips. Please retry. If this is the first setup, the project administrator needs to install the video database and storage configuration.</p><button class="secondary" id="video-retry">RETRY</button></section>';list.querySelector('#video-retry').onclick=loadVideos}
+ }
+ function draw(){
+  const visible=videos.filter(v=>!filter.value||v.game_week===filter.value);
+  list.innerHTML=visible.length?visible.map(v=>'<article class="card video-card" data-video-id="'+esc2(v.id)+'"><div class="club-kicker">'+esc2(v.game_week)+(isCoach?' · '+(v.published?'PUBLISHED':'DRAFT'):'')+'</div><h3>'+esc2(v.title)+'</h3>'+(v.match_date?'<p class="mini">'+esc2(new Date(v.match_date+'T12:00:00').toLocaleDateString('en-AU',{day:'numeric',month:'short',year:'numeric'}))+'</p>':'')+'<div class="video-player"><button class="secondary" data-play="'+esc2(v.id)+'">LOAD CLIP</button></div><h4>Coach’s analysis</h4><p class="video-analysis">'+esc2(v.analysis||'No additional analysis for this clip.')+'</p>'+(isCoach?'<div class="tools"><button class="secondary" data-edit-video="'+esc2(v.id)+'">EDIT ANALYSIS</button><button class="primary" data-publish-video="'+esc2(v.id)+'">'+(v.published?'UNPUBLISH':'PUBLISH TO PLAYERS')+'</button><button class="secondary" data-delete-video="'+esc2(v.id)+'">DELETE CLIP</button></div>':'')+'</article>').join(''):'<section class="card"><h3>'+ (isCoach?'No clips yet':'No published clips yet')+'</h3><p>'+ (isCoach?'Upload your first game clip above, then publish it when the analysis is ready.':'Your coaching staff’s game-week analysis will appear here once published.')+'</p></section>';
+  list.querySelectorAll('[data-play]').forEach(b=>b.onclick=async()=>{
+   b.disabled=true;try{const v=videos.find(v=>v.id===b.dataset.play);const signed=await check(bucket().createSignedUrl(v.object_path,300));if(!b.isConnected)return;
+   const player=document.createElement('video');player.controls=true;player.playsInline=true;player.preload='metadata';player.src=signed.signedUrl;player.setAttribute('aria-label',v.title);
+   const retry=document.createElement('button');retry.className='secondary';retry.textContent='RELOAD CLIP';retry.onclick=()=>{player.remove();retry.remove();b.hidden=false;b.click()};player.onerror=()=>{retry.hidden=false;CometsUI.notify('Unable to play this clip. Reload it, or ask your coach for an MP4 version.',true)};retry.hidden=true;b.after(player,retry);b.hidden=true;
+   }catch{CometsUI.notify('Unable to load this clip. Check your connection and try again.',true)}finally{b.disabled=false}
+  });
+  list.querySelectorAll('[data-edit-video]').forEach(b=>b.onclick=()=>safe(async()=>{
+   const v=videos.find(v=>v.id===b.dataset.editVideo);const result=await CometsUI.dialog({title:'Edit game analysis',fields:[{name:'title',label:'Clip title',value:v.title,maxLength:120},{name:'week',label:'Game week / round',value:v.game_week,maxLength:100},{name:'analysis',label:'Coaching analysis',value:v.analysis,multiline:true,maxLength:10000,required:false}]});if(!result)return;
+   const rows=await check(db.from('comets_game_videos').update({title:result.title,game_week:result.week,analysis:result.analysis}).eq('id',v.id).select('id'));if(!rows?.length)throw new Error('Clip was removed or permission was denied.');await loadVideos();alert('Analysis saved.');
+  }));
+  list.querySelectorAll('[data-publish-video]').forEach(b=>b.onclick=()=>safe(async()=>{
+   const v=videos.find(v=>v.id===b.dataset.publishVideo);if(!await confirm(v.published?'Hide this clip from players?':'Publish this clip and analysis to all players?'))return;
+   const rows=await check(db.from('comets_game_videos').update({published:!v.published}).eq('id',v.id).select('id'));if(!rows?.length)throw new Error('Clip was removed or permission was denied.');await loadVideos();alert(v.published?'Clip unpublished.':'Clip published to players.');
+  }));
+  list.querySelectorAll('[data-delete-video]').forEach(b=>b.onclick=()=>safe(async()=>{
+   const v=videos.find(v=>v.id===b.dataset.deleteVideo);if(!await confirm('Delete this clip and its analysis? This cannot be undone.'))return;
+   const rows=await check(db.from('comets_game_videos').delete().eq('id',v.id).select('id'));if(!rows?.length)throw new Error('Clip was removed or permission was denied.');
+   const {error}=await bucket().remove([v.object_path]);await loadVideos();if(error)CometsUI.notify('Clip removed from the library. Its stored file needs cleanup by the project administrator.',true);else alert('Clip deleted.');
+  }));
+  CometsUI.polish();
+ }
+ filter.onchange=draw;
+ if(isCoach)app.querySelector('#video-upload').onclick=()=>safe(async()=>{
+  const title=val('video-title'),week=val('video-week'),file=app.querySelector('#video-file').files[0];
+  if(!title||!week||!file)throw new Error('Enter the clip title, game week and select a video file.');
+  const extension={'video/mp4':'mp4','video/webm':'webm','video/quicktime':'mov'}[file.type];if(!extension||file.size===0||file.size>50*1024*1024)throw new Error('Choose an MP4, WebM or MOV clip up to 50 MB.');
+  const path=user.id+'/'+crypto.randomUUID()+'.'+extension,status=app.querySelector('#video-upload-status');status.textContent='Uploading clip… Keep this page open.';
+  let uploaded=false,saved=false;
+  try{
+   await check(bucket().upload(path,file,{contentType:file.type,upsert:false}));uploaded=true;
+   await check(db.from('comets_game_videos').insert({title,game_week:week,match_date:val('video-date')||null,analysis:val('video-analysis'),object_path:path,published:false,created_by:user.id}));saved=true;
+   if(!status.isConnected)return;
+   for(const id of ['video-title','video-week','video-date','video-analysis','video-file'])app.querySelector('#'+id).value='';status.textContent='Draft uploaded. Add or review the analysis, then publish it to players.';await loadVideos();alert('Clip uploaded as a private draft.');
+  }catch(e){if(uploaded&&!saved){const {error}=await bucket().remove([path]);if(error){status.textContent='Upload was not saved. An unused file needs cleanup by the project administrator.';throw new Error('Video details could not be saved; unused file cleanup also failed. Contact the project administrator.')}}status.textContent='Upload failed. Your details have been kept; please retry.';throw e}
+ });
+ await loadVideos();
+}
+
 async function renderAccess(app){
  if(!coach())return;
- app.innerHTML='<div class="section-head"><div class="club-kicker">COACH ADMINISTRATION</div><h2>MEMBER ACCESS</h2><p>Create one-time activation codes for coaches and players. Codes expire after 24 hours.</p></div><section class="card"><h3>Create an activation code</h3><p>Assign the role here. The member cannot change it during activation.</p><label for="access-name">Member name</label><input id="access-name" maxlength="100" autocomplete="name"><label for="access-email">Member email</label><input id="access-email" type="email" autocomplete="email"><label for="access-role">Access level</label><select id="access-role"><option value="player">Player</option><option value="coach">Coach — includes member administration</option></select><label for="access-player">Squad player (required for players)</label><select id="access-player"><option value="">Choose a player</option>'+dbPlayers.map(p=>'<option value="'+esc2(p.id)+'">'+esc2(p.full_name)+'</option>').join('')+'</select><div class="tools"><button class="primary" id="access-issue">GENERATE CODE</button></div><div id="access-code"></div></section><section class="card"><h3>Recent activation codes</h3><p>Revoking an unused code prevents activation. It does not disable an existing account.</p><div id="access-list" role="status">Loading…</div></section>';
+ app.innerHTML='<div class="section-head"><div class="club-kicker">COACH ADMINISTRATION</div><h2>MEMBER ACCESS</h2><p>Create one-time activation codes for coaches and players. Codes expire after 24 hours.</p></div><section class="card"><h3>Create an activation code</h3><p>Assign the role here. The member cannot change it during activation.</p><label for="access-name">Member name</label><input id="access-name" maxlength="100" autocomplete="name"><label for="access-email">Member email</label><input id="access-email" type="email" autocomplete="email"><label for="access-role">Access level</label><select id="access-role"><option value="player">Player</option><option value="coach">Coach — includes member administration</option></select><label for="access-player">Squad player (players only — leave blank for coaches)</label><select id="access-player"><option value="">Choose a player</option>'+dbPlayers.map(p=>'<option value="'+esc2(p.id)+'">'+esc2(p.full_name)+'</option>').join('')+'</select><div class="tools"><button class="primary" id="access-issue">GENERATE CODE</button></div><div id="access-code"></div></section><section class="card"><h3>Recent activation codes</h3><p>Revoking an unused code prevents activation. It does not disable an existing account.</p><div id="access-list" role="status">Loading…</div></section>';
+ const roleSelect=app.querySelector('#access-role'),playerSelect=app.querySelector('#access-player');roleSelect.onchange=()=>{playerSelect.disabled=roleSelect.value==='coach';if(playerSelect.disabled)playerSelect.value=''};
  const list=app.querySelector('#access-list');
  app.querySelector('#access-issue').onclick=()=>safe(async()=>{
  const email=app.querySelector('#access-email');if(!email.value||!email.reportValidity()||!val('access-name'))throw new Error('Enter the member’s name and valid email address.');
  if(val('access-role')==='player'&&!val('access-player'))throw new Error('Choose the linked squad player.');
- const result=await accessRequest({action:'issue',name:val('access-name'),email:val('access-email'),role:val('access-role'),player_id:val('access-player')||null});
+ const result=await accessRequest({action:'issue',name:val('access-name'),email:val('access-email'),role:val('access-role'),player_id:val('access-role')==='coach'?null:val('access-player')||null});
  const box=app.querySelector('#access-code');box.innerHTML='<h3>Share this code privately</h3><p>This code is shown only here. The member must use the email you entered and choose a password.</p><label for="activation-result">One-time activation code</label><input id="activation-result" readonly><p class="mini" id="activation-expiry"></p><button class="secondary" id="access-copy">COPY CODE</button>';
  box.querySelector('input').value=result.code;box.querySelector('#activation-expiry').textContent='Expires '+new Date(result.expires_at).toLocaleString('en-AU');
  box.querySelector('#access-copy').onclick=async()=>{try{await navigator.clipboard.writeText(result.code);alert('Code copied.')}catch{box.querySelector('input').select();alert('Select and copy the code above.')}};

@@ -12,6 +12,7 @@ const call=async(body,token)=>{const response=await handler(new Request('https:/
  role='player';assert.equal((await call({action:'issue'},'valid')).status,403);role='coach';
  const result=await call({action:'issue',name:'Alex',email:'Alex@example.invalid',role:'player',player_id:'player'},'valid');assert.equal(result.status,200);assert.match(result.body.code,/^[A-F0-9]{4}(-[A-F0-9]{4}){7}$/);
  const insert=writes.find(w=>w.method==='insert').body;assert.equal(insert.code_hash.length,64);assert.equal(insert.code,undefined);assert.equal(insert.email,'alex@example.invalid');assert.equal(insert.created_by,'coach');
+ const staff=await call({action:'issue',name:'Assistant Coach',email:'coach@example.invalid',role:'coach'},'valid');assert.equal(staff.status,200);assert.equal(writes.filter(w=>w.method==='insert').at(-1).body.player_id,null);
  assert.equal((await call({action:'redeem',code:'1234',email:'a@b.test',password:'long enough password'})).status,400);
  const activation={action:'redeem',code,email:'alex@example.invalid',password:'long enough password',role:'coach'};
  claimAvailable=false;assert.equal((await call(activation)).status,400);claimAvailable=true;
