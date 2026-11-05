@@ -1,0 +1,10 @@
+/apple-touch-icon.png
+  Cache-Control: public, max-age=0, must-revalidate
+/assets/apple-touch-icon.png
+  Cache-Control: public, max-age=0, must-revalidate
+/manifest.webmanifest
+  Cache-Control: public, max-age=0, must-revalidate
+/assets/icon-192.png
+  Cache-Control: public, max-age=0, must-revalidate
+/assets/icon-512.png
+  Cache-Control: public, max-age=0, must-revalidate
