@@ -1,0 +1,5 @@
+const assert=require('node:assert/strict'),{types,parse,inputValue,format}=require('../benchmark-utils.js');
+assert.equal(parse('bronco','5:30'),330);assert.equal(parse('plank','2:05.25'),125.25);assert.equal(parse('bronco','330'),330);assert.equal(parse('sprint_100m','14.25'),14.25);assert.equal(parse('pushups_1min','0'),0);assert.equal(parse('situps_1min','45'),45);
+for(const [key,value] of [['bronco','5:60'],['bronco','0:00'],['plank','-1'],['sprint_100m','0'],['pushups_1min','2.5'],['situps_1min','-1'],['bench_press',''],['unknown','10']])assert.throws(()=>parse(key,value));
+assert.equal(inputValue('bronco',330),'5:30');assert.equal(inputValue('plank',125.25),'2:05.25');assert.equal(format('sprint_100m',14.25),'14.25 seconds');assert.equal(format('pushups_1min',0),'0 reps');assert.equal(types.bronco.higher,false);assert.equal(types.plank.higher,true);assert.equal(types.sprint_100m.higher,false);
+console.log('PASS: benchmark units, durations, zero repetition counts, invalid results and improvement directions.');
