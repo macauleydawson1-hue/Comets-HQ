@@ -21,7 +21,7 @@ const safe=async(fn)=>{
 const renderBase=window.render;
 function refresh(){if(!ready)return;previewMode=coach()?'coach':'player';if(!coach()){previewPlayerId=myId||'';}window.render();}
 function enhance(){
- const current=['gym','workout','nutrition','progress'].includes(state.tab)?'training':['profile','squad'].includes(state.tab)?'team':['sessions','matchstats'].includes(state.tab)?'matches':state.tab;
+ const current=['gym','workout','nutrition','progress'].includes(state.tab)?'training':['profile','squad'].includes(state.tab)?'team':['sessions','matchstats','briefings'].includes(state.tab)?'matches':state.tab;
  document.getElementById('tabs').innerHTML=[['home','Home'],['team','Team'],['matches','Matches'],['stats','Stats'],['training',coach()?'Training':'My Training'],['video','Video']].map(([id,label])=>'<button class="'+(current===id?'active':'')+'" onclick="changeTab(\''+id+'\')">'+label+'</button>').join('');
 
  document.querySelector('.mode-switch-wrap')?.setAttribute('hidden','');
@@ -29,12 +29,14 @@ function enhance(){
  if(state.tab==='home'){const intro=document.querySelector('#app .dashboard-intro h2');if(intro)intro.textContent='Welcome back, '+firstName();}
  document.getElementById('preview-warning')?.setAttribute('hidden','');
  const app=document.getElementById('app');if(!app)return;
+ if(state.tab==='notifications'){renderInbox(app);CometsUI.polish();return}
+ if(state.tab==='briefings'){renderBriefings(app);CometsUI.polish();return}
  if(state.tab==='progress'&&coach()){renderCoachProgress(app);CometsUI.polish();return}
  if(state.tab==='training'){renderTrainingArea(app);CometsUI.polish();return}
  if(state.tab==='video'){renderVideo(app);CometsUI.polish();return}
  if(state.tab==='access'){if(coach())renderAccess(app);else app.innerHTML='<section class="card"><h2>Coach access required</h2></section>';CometsUI.polish();return}
  if(state.tab==='home'){showSidelinePreview(app);if(coach()){const section=document.createElement('section');section.className='card';section.innerHTML='<h3>Coach administration</h3><p>Issue activation codes for coaches and players.</p><button class="primary" onclick="changeTab(\'access\')">MEMBER ACCESS</button>';app.append(section)}}
- if(state.tab==='stats')renderLiveStats(app);
+ if(state.tab==='stats'){renderLiveStats(app);appendSeasonHighs(app)}
 
  if(state.tab==='team'&&coach()&&teamSubtab==='availability'){
    const tabs=app.querySelector('.inner-tabs');while(tabs?.nextElementSibling)tabs.nextElementSibling.remove();
@@ -58,6 +60,8 @@ function enhance(){
  }
  if(state.tab==='team'&&!coach())appendAvailability(app);
  if(state.tab==='matches'&&coach())appendMatchStats(app);
+ if(state.tab==='matches')appendBriefingShortcut(app);
+ if(state.tab==='home')appendNotificationHome(app);
 
  if(!coach()&&state.tab==='training')app.innerHTML='<div class="section-head"><div class="club-kicker">FIRST GRADE · PRIVATE</div><h2>MY TRAINING</h2></div>';
  if(coach()&&state.tab==='playerprograms')app.innerHTML='<div class="section-head"><h2>PLAYER PROGRAMS</h2></div>'; 
@@ -112,9 +116,10 @@ async function showSidelinePreview(app){
 }
 function account(){
  let el=document.getElementById('comets-account');if(!el){el=document.createElement('div');el.id='comets-account';el.className='account-mini';document.querySelector('header').before(el)}
- el.innerHTML='<button class="account-mini-btn" id="acc-btn" aria-expanded="false" aria-controls="acc-panel">ACCOUNT · '+(coach()?'COACH':'PLAYER')+'</button><div id="acc-panel" class="account-mini-menu" hidden><p class="mini">'+esc2(displayName||'Comets member')+' · '+(coach()?'Coach':'Player')+'</p><p class="mini">'+esc2(user.email)+'</p><button class="secondary" id="acc-name">Edit my name</button><button class="secondary" id="acc-sideline">The Sideline — announcements</button><button class="secondary" id="acc-password">Set or change password</button><button class="secondary" id="acc-install">Install app</button><button class="secondary" id="acc-out">Sign out</button>'+(coach()?'<button class="secondary" id="acc-access">Member access</button><button class="secondary" id="acc-invite">Invite by email</button>':'')+'</div>';
+ el.innerHTML='<button class="account-mini-btn" id="acc-btn" aria-expanded="false" aria-controls="acc-panel">ACCOUNT · '+(coach()?'COACH':'PLAYER')+'</button><div id="acc-panel" class="account-mini-menu" hidden><p class="mini">'+esc2(displayName||'Comets member')+' · '+(coach()?'Coach':'Player')+'</p><p class="mini">'+esc2(user.email)+'</p><button class="secondary" id="acc-name">Edit my name</button><button class="secondary" id="acc-sideline">The Sideline — announcements</button><button class="secondary" id="acc-notifications">Notifications</button><button class="secondary" id="acc-password">Set or change password</button><button class="secondary" id="acc-install">Install app</button><button class="secondary" id="acc-out">Sign out</button>'+(coach()?'<button class="secondary" id="acc-access">Member access</button><button class="secondary" id="acc-invite">Invite by email</button>':'')+'</div>';
+ el.querySelector('#acc-notifications').onclick=()=>{CometsUI.closeAccount();changeTab('notifications')};updateNotificationBadge();
  const button=el.querySelector('#acc-btn'),panel=el.querySelector('#acc-panel');button.onclick=()=>{panel.hidden=!panel.hidden;button.setAttribute('aria-expanded',String(!panel.hidden))};
- el.querySelector('#acc-sideline').onclick=()=>safe(async()=>{CometsUI.closeAccount();await showFeed()});
+ el.querySelector('#acc-sideline').onclick=()=>safe(async()=>{if((window.cometsAttendanceDirty||window.cometsBriefingDirty)&&!await confirm('Discard unsaved changes and open announcements?'))return;window.cometsAttendanceDirty=false;window.cometsBriefingDirty=false;CometsUI.closeAccount();await showFeed()});
  el.querySelector('#acc-out').onclick=()=>safe(async()=>{const {error}=await db.auth.signOut();if(error)throw error;clearClubData();login()});
  el.querySelector('#acc-name').onclick=()=>safe(async()=>{const result=await CometsUI.dialog({title:'Edit your name',fields:[{name:'name',label:'Display name',value:displayName,maxLength:100}]});if(!result)return;const name=result.name.replace(/\s+/g,' ');if(!name)throw new Error('Enter a display name.');const {error}=await db.from('profiles').update({display_name:name}).eq('id',user.id);if(error)throw error;displayName=name;account();refresh();alert('Name updated.')});
  el.querySelector('#acc-password').onclick=()=>safe(async()=>{const result=await CometsUI.dialog({title:'Set your password',fields:[{name:'password',label:'New password (at least 8 characters)',type:'password',minLength:8},{name:'repeat',label:'Repeat new password',type:'password',minLength:8}]});if(!result)return;if(result.password!==result.repeat)throw new Error('The passwords do not match.');const {error}=await db.auth.updateUser({password:result.password});if(error)throw error;alert('Password updated. You can use it next time you sign in.')});
@@ -122,13 +127,13 @@ function account(){
  if(coach()){el.querySelector('#acc-invite').onclick=invite;el.querySelector('#acc-access').onclick=()=>{CometsUI.closeAccount();changeTab('access')}}
 }
 function clearClubData(){
- window.cometsAttendanceDirty=false;
+ window.cometsAttendanceDirty=false;window.cometsBriefingDirty=false;
  dbPlayers=[];dbArchivedPlayers=[];dbFixtures=[];dbSessions=[];dbSelections=[];dbStats=[];dbPrograms=[];dbLogs=[];dbAvailability=[];
  for(const key of ['players','matches','sessions'])club[key]=[];
  for(const key of ['selections','publishedSelections','playerStats','matchPlayerStats','playerTraining'])club[key]={};
  window.cometsLive=true;save();user=null;myId=null;displayName='';
 }
-function login(){ready=false;document.querySelector('header').style.display='none';document.querySelector('.mode-switch-wrap')?.setAttribute('hidden','');document.getElementById('app').style.display='none';document.getElementById('tabs').style.display='none';document.getElementById('comets-account')?.remove();wall.hidden=false;document.querySelector('.auth-box .athlete')?.remove();notice.textContent='Invitation-only access for Comets players and coaches.'}
+function login(){ready=false;document.getElementById('app').replaceChildren();document.querySelector('header').style.display='none';document.querySelector('.mode-switch-wrap')?.setAttribute('hidden','');document.getElementById('app').style.display='none';document.getElementById('tabs').style.display='none';document.getElementById('comets-account')?.remove();wall.hidden=false;document.querySelector('.auth-box .athlete')?.remove();notice.textContent='Invitation-only access for Comets players and coaches.'}
 async function enter(){if(entering)return entering;entering=enterOnce();try{return await entering}finally{entering=null}}
 async function enterOnce(){const {data:{session},error:sessionError}=await db.auth.getSession();if(sessionError)throw sessionError;if(!session?.user)return login();const {data:{user:u},error}=await db.auth.getUser();if(error)throw error;if(!u)return login();user=u;const {data:r,error:re}=await db.from('user_roles').select('role').eq('user_id',u.id).single();if(re)throw re;if(!['coach','player'].includes(r?.role))throw new Error('Your account needs a club role. Please contact your coach.');role=r.role;const {data:profile,error:profileError}=await db.from('profiles').select('display_name').eq('id',u.id).maybeSingle();if(profileError)throw profileError;displayName=(profile?.display_name||u.user_metadata?.display_name||'').trim();const {data:link,error:linkError}=await db.from('player_links').select('player_id').eq('user_id',u.id).maybeSingle();if(linkError)throw linkError;myId=link?.player_id||null;await load();wall.hidden=true;document.querySelector('header').style.display='';document.getElementById('app').style.display='';document.getElementById('tabs').style.display='';ready=true;account();state.tab='home';refresh()}
 async function load(){[dbPlayers,dbFixtures,dbSessions,dbSelections,dbStats,dbPrograms,dbLogs,dbAvailability]=await Promise.all(['squad_players','fixtures','training_sessions','team_selections','match_stats','player_programs','player_training','player_availability'].map(api));
@@ -140,7 +145,7 @@ async function load(){[dbPlayers,dbFixtures,dbSessions,dbSelections,dbStats,dbPr
  club.matches=dbFixtures.map(f=>({id:f.id,opponent:f.opponent,date:f.match_date,venue:f.venue,us:f.points_for,them:f.points_against}));
  club.sessions=dbSessions.map(s=>({id:s.id,title:'Team training',date:localDate(s.starts_at),time:new Date(s.starts_at).toLocaleTimeString('en-AU',{hour:'2-digit',minute:'2-digit'}),venue:s.location,focus:s.notes}));
  club.selections={};club.publishedSelections={};for(const f of dbFixtures){const picks=dbSelections.filter(s=>s.fixture_id===f.id);const key=f.round_label||f.opponent+' '+f.match_date;club.selections[key]=Array(17).fill('');for(const s of picks){const idx=Number(s.position);if(Number.isInteger(idx)&&idx>=0&&idx<17)club.selections[key][idx]=s.player_id}club.publishedSelections[key]=picks.some(s=>s.published)}
- club.playerStats={};club.matchPlayerStats={};for(const s of dbStats){const p=club.playerStats[s.player_id]||={games:0,tries:0,tackles:0,metres:0,errors:0};p.games++;for(const k of ['tries','tackles','metres','errors'])p[k]+=s[k]||0;club.matchPlayerStats[s.fixture_id]||={};club.matchPlayerStats[s.fixture_id][s.player_id]={played:true,...s}}
+ club.playerStats={};club.matchPlayerStats={};for(const s of dbStats){const p=club.playerStats[s.player_id]||={games:0,tries:0,tackles:0,metres:0,errors:0};p.games++;for(const k of ['tries','tackles','metres','hitups','errors'])p[k]+=s[k]||0;club.matchPlayerStats[s.fixture_id]||={};club.matchPlayerStats[s.fixture_id][s.player_id]={played:true,...s}}
  if(!coach()&&myId){club.playerTraining={};club.playerTraining[myId]={sessions:dbLogs.filter(x=>x.player_id===myId&&x.kind==='workout').map(x=>({id:x.id,date:x.logged_at.slice(0,10),name:x.details,notes:''})),nutrition:dbLogs.filter(x=>x.player_id===myId&&x.kind==='nutrition').map(x=>({id:x.id,date:x.logged_at.slice(0,10),notes:x.details})),program:dbPrograms.find(x=>x.player_id===myId)?.details||''};}
  window.cometsLive=true;save();}
 // Override original mutators so coach writes go to the shared backend; the original cards stay in place.
@@ -186,11 +191,11 @@ function appendSelections(app){
 }
 
 function appendAvailability(app){const c=document.createElement('section');c.className='card';c.innerHTML='<h3>LIVE AVAILABILITY</h3>'+(coach()?'<p class="muted">Players are assumed available unless they report otherwise.</p>':'<p class="muted">You are assumed available. Only report a change if you cannot play.</p>')+(!coach()&&!myId?'<p>Your account has not been linked to a squad player yet. Ask a coach.</p>':'')+dbFixtures.map(f=>'<div class="club-row"><b>'+esc2(f.opponent+' · '+f.match_date)+'</b>'+(coach()?'<small>'+esc2(dbAvailability.filter(a=>a.fixture_id===f.id).map(a=>(dbPlayers.find(p=>p.id===a.player_id)?.full_name||'Player')+': '+a.status).join(' · ')||'No responses')+'</small>':'<select data-av="'+f.id+'"><option value="">Choose</option>'+['available','unavailable','unsure'].map(v=>'<option value="'+v+'" '+(dbAvailability.some(a=>a.fixture_id===f.id&&a.player_id===myId&&a.status===v)?'selected':'')+'>'+v+'</option>').join('')+'</select>')+'</div>').join('');app.appendChild(c);if(!coach()&&myId)c.querySelectorAll('[data-av]').forEach(x=>x.onchange=()=>safe(async()=>{const {error}=await db.from('player_availability').upsert({player_id:myId,fixture_id:x.dataset.av,status:x.value||'available'});if(error)throw error;await load();refresh();CometsUI.notify('Saved successfully.')}))}
-function appendMatchStats(app){const c=document.createElement('section');c.className='card';c.innerHTML='<h3>OFFICIAL MATCH STATS</h3><p class="muted">Enter match-by-match figures. Player totals update for everyone.</p><select id="stat-fixture">'+dbFixtures.map(f=>'<option value="'+f.id+'">'+esc2(f.opponent+' · '+f.match_date)+'</option>').join('')+'</select><select id="stat-player">'+dbPlayers.map(p=>'<option value="'+p.id+'">'+esc2(p.full_name)+'</option>').join('')+'</select>'+['tries','tackles','metres','errors'].map(k=>'<label>'+k+'</label><input type="number" min="0" id="stat-'+k+'" value="0">').join('')+'<button class="primary" id="stat-save">SAVE MATCH STATS</button>';app.appendChild(c);
- const fillStats=()=>{const entry=dbStats.find(s=>s.fixture_id===val('stat-fixture')&&s.player_id===val('stat-player'));for(const key of ['tries','tackles','metres','errors'])c.querySelector('#stat-'+key).value=entry?.[key]||0};
+function appendMatchStats(app){const c=document.createElement('section');c.className='card';c.innerHTML='<h3>OFFICIAL MATCH STATS</h3><p class="muted">Enter match-by-match figures. Player totals update for everyone.</p><select id="stat-fixture">'+dbFixtures.map(f=>'<option value="'+f.id+'">'+esc2(f.opponent+' · '+f.match_date)+'</option>').join('')+'</select><select id="stat-player">'+dbPlayers.map(p=>'<option value="'+p.id+'">'+esc2(p.full_name)+'</option>').join('')+'</select>'+['tries','tackles','metres','hitups','errors'].map(k=>'<label>'+ (k==='hitups'?'Hit-ups (leave blank if not recorded)':k)+'</label><input type="number" min="0" id="stat-'+k+'" value="'+(k==='hitups'?'':'0')+'">').join('')+'<button class="primary" id="stat-save">SAVE MATCH STATS</button>';app.appendChild(c);
+ const fillStats=()=>{const entry=dbStats.find(s=>s.fixture_id===val('stat-fixture')&&s.player_id===val('stat-player'));for(const key of ['tries','tackles','metres','hitups','errors'])c.querySelector('#stat-'+key).value=key==='hitups'?(entry?.[key]??''):(entry?.[key]||0)};
  c.querySelector('#stat-fixture').onchange=fillStats;c.querySelector('#stat-player').onchange=fillStats;fillStats();
  c.querySelector('#stat-save').disabled=!dbFixtures.length||!dbPlayers.length;
- c.querySelector('#stat-save').onclick=()=>safe(async()=>{const obj={fixture_id:val('stat-fixture'),player_id:val('stat-player')};if(!obj.fixture_id||!obj.player_id)return alert('Choose a fixture and player');for(const k of ['tries','tackles','metres','errors']){const n=Number(val('stat-'+k));if(!Number.isInteger(n)||n<0)throw new Error('Match statistics must be whole numbers of zero or more.');obj[k]=n;}const {error}=await db.from('match_stats').upsert(obj,{onConflict:'fixture_id,player_id'});if(error)throw error;await load();refresh();CometsUI.notify('Saved successfully.')})}
+ c.querySelector('#stat-save').onclick=()=>safe(async()=>{const obj={fixture_id:val('stat-fixture'),player_id:val('stat-player')};if(!obj.fixture_id||!obj.player_id)return alert('Choose a fixture and player');for(const k of ['tries','tackles','metres','hitups','errors']){if(k==='hitups'&&!val('stat-'+k)){obj[k]=null;continue}const n=Number(val('stat-'+k));if(!Number.isInteger(n)||n<0)throw new Error('Match statistics must be whole numbers of zero or more.');obj[k]=n;}const {error}=await db.from('match_stats').upsert(obj,{onConflict:'fixture_id,player_id'});if(error)throw error;await load();refresh();CometsUI.notify('Saved successfully.')})}
 let benchmarkPlayerId='';
 function renderCoachProgress(app){
  if(!dbPlayers.some(p=>p.id===benchmarkPlayerId))benchmarkPlayerId=dbPlayers[0]?.id||'';
@@ -233,7 +238,9 @@ async function appendPlayerBenchmarks(app,playerId){
 function renderTrainingArea(app){
  if(!coach()){app.innerHTML='<div class="section-head"><div class="club-kicker">FIRST GRADE · PRIVATE</div><h2>MY TRAINING</h2></div>';appendTraining(app);return}
  app.innerHTML='<div class="section-head"><div class="club-kicker">COACHING & PERFORMANCE</div><h2>TRAINING</h2><p>Personal training tools and your team attendance register.</p></div><div class="training-tabs" role="tablist" aria-label="Training sections"><button type="button" id="training-tools-tab" role="tab" aria-selected="true" aria-controls="training-tools-panel" tabindex="0">Training</button><button type="button" id="training-attendance-tab" role="tab" aria-selected="false" aria-controls="training-attendance-panel" tabindex="-1">Attendance</button></div><section id="training-tools-panel" role="tabpanel" aria-labelledby="training-tools-tab" tabindex="0"></section><section id="training-attendance-panel" role="tabpanel" aria-labelledby="training-attendance-tab" tabindex="0" hidden></section>';
- const tools=app.querySelector('#training-tools-panel'),attendance=app.querySelector('#training-attendance-panel'),tabs=[...app.querySelectorAll('[role=tab]')];
+ const tools=app.querySelector('#training-tools-panel'),attendance=app.querySelector('#training-attendance-panel');
+ let personal=null;if(myId){const tab=document.createElement('button');tab.type='button';tab.id='training-personal-tab';tab.setAttribute('role','tab');tab.setAttribute('aria-controls','training-personal-panel');tab.setAttribute('aria-selected','false');tab.tabIndex=-1;tab.textContent='My Training';app.querySelector('.training-tabs').append(tab);personal=document.createElement('section');personal.id='training-personal-panel';personal.setAttribute('role','tabpanel');personal.setAttribute('aria-labelledby',tab.id);personal.hidden=true;personal.tabIndex=0;app.append(personal)}
+ const tabs=[...app.querySelectorAll('[role=tab]')];
  const wrapper=document.createElement('div');wrapper.innerHTML=trainingHub();wrapper.querySelector('.section-head')?.remove();tools.append(...wrapper.childNodes);appendTraining(tools);
  let active=0,attendanceLoaded=false;
  async function activate(index){
@@ -241,9 +248,10 @@ function renderTrainingArea(app){
   if(window.cometsAttendanceDirty&&!await confirm('Leave Attendance and discard unsaved marks?'))return;
   window.cometsAttendanceDirty=false;
   if(active===1){attendance.replaceChildren();attendanceLoaded=false}
-  active=index;tools.hidden=index!==0;attendance.hidden=index!==1;
+  active=index;tools.hidden=index!==0;attendance.hidden=index!==1;if(personal)personal.hidden=index!==2;
   tabs.forEach((tab,i)=>{tab.setAttribute('aria-selected',String(index===i));tab.tabIndex=index===i?0:-1});
   if(index===1&&!attendanceLoaded){appendAttendance(attendance);attendanceLoaded=true}
+  if(index===2&&personal&&!personal.childNodes.length)appendTraining(personal,true);
   tabs[index].focus({preventScroll:true});CometsUI.polish();
  }
  tabs.forEach((tab,i)=>{
@@ -296,19 +304,20 @@ function appendAttendance(app){
  readRegister();
 }
 
-function appendTraining(app){
+function refreshPersonalTraining(){refresh();if(coach()&&state.tab==='training')document.getElementById('training-personal-tab')?.click()}
+function appendTraining(app,personal=false){
  const c=document.createElement('section');c.className='card';
- if(coach()){
+ if(coach()&&!personal){
  c.innerHTML='<h3>Assign a player program</h3><p class="muted">Programs are shared with the assigned player and coaches.</p><select id="prog-player">'+dbPlayers.map(p=>'<option value="'+p.id+'">'+esc2(p.full_name)+'</option>').join('')+'</select><input id="prog-title" placeholder="Program title" maxlength="120"><textarea id="prog-details" placeholder="Exercises, sets and instructions" maxlength="10000"></textarea><button class="primary" id="prog-save">ASSIGN PROGRAM</button>';
  if(!dbPlayers.length)c.innerHTML='<h3>Player programs</h3><p>Add squad players in Team before assigning a program.</p><button class="primary" onclick="teamSection(\'squad\')">ADD PLAYERS</button>';
  app.append(c);const saveButton=c.querySelector('#prog-save');if(saveButton)saveButton.onclick=()=>safe(async()=>{if(!val('prog-player')||!val('prog-title')||!val('prog-details'))return alert('Choose a player and enter the program title and instructions.');await write('player_programs','insert',{player_id:val('prog-player'),title:val('prog-title'),details:val('prog-details')});await load();refresh();alert('Program assigned.')});
  }else{
  c.innerHTML='<h3>My private training log</h3>'+(myId?'<select id="log-type"><option value="workout">Workout</option><option value="nutrition">Nutrition</option><option value="progress">Progress</option></select><textarea id="log-details" placeholder="What did you complete?" maxlength="5000"></textarea><label for="log-weight">Current weight (kg, optional)</label><input id="log-weight" type="number" min="1" max="500" step="0.1"><button class="primary" id="log-save">SAVE PRIVATE LOG</button>':'<p>Ask a coach to link your account to your squad profile to begin logging.</p>');app.append(c);
- if(myId)c.querySelector('#log-save').onclick=()=>safe(async()=>{if(!val('log-details'))return alert('Describe your workout, nutrition or progress.');const weight=val('log-weight')?Number(val('log-weight')):null;if(weight!==null&&(!Number.isFinite(weight)||weight<=0||weight>500))return alert('Enter a weight between 1 and 500 kg.');await write('player_training','insert',{player_id:myId,kind:val('log-type'),details:val('log-details'),weight_kg:weight});await load();refresh();alert('Training entry saved.')});
+ if(myId)c.querySelector('#log-save').onclick=()=>safe(async()=>{if(!val('log-details'))return alert('Describe your workout, nutrition or progress.');const weight=val('log-weight')?Number(val('log-weight')):null;if(weight!==null&&(!Number.isFinite(weight)||weight<=0||weight>500))return alert('Enter a weight between 1 and 500 kg.');await write('player_training','insert',{player_id:myId,kind:val('log-type'),details:val('log-details'),weight_kg:weight});await load();refreshPersonalTraining();alert('Training entry saved.')});
  const programs=document.createElement('section');programs.className='card';programs.innerHTML='<h3>My assigned programs</h3>'+ (dbPrograms.filter(x=>x.player_id===myId).map(x=>'<div class="club-row history-entry"><div><h4>'+esc2(x.title)+'</h4><p>'+esc2(x.details)+'</p></div></div>').join('')||'<p class="muted">Your coach’s assigned programs will appear here.</p>');app.append(programs);
  const logs=document.createElement('section');logs.className='card';logs.innerHTML='<h3>Training history</h3>'+(dbLogs.filter(x=>x.player_id===myId).sort((a,b)=>b.logged_at.localeCompare(a.logged_at)).map(x=>'<article class="history-entry"><h4>'+esc2(x.kind)+'</h4><time datetime="'+esc2(x.logged_at)+'">'+esc2(new Date(x.logged_at).toLocaleString('en-AU',{day:'numeric',month:'short',year:'numeric',hour:'numeric',minute:'2-digit'}))+'</time><p>'+esc2(x.details)+'</p>'+(x.weight_kg?'<p class="mini">Weight: '+esc2(x.weight_kg)+' kg</p>':'')+'<div class="tools"><button class="secondary" data-log-edit="'+esc2(x.id)+'">Edit entry</button><button class="secondary" data-log-delete="'+esc2(x.id)+'">Delete entry</button></div></article>').join('')||'<p class="muted">No entries yet. Save your first entry above.</p>');app.append(logs);
- logs.querySelectorAll('[data-log-edit]').forEach(b=>b.onclick=()=>safe(async()=>{const entry=dbLogs.find(x=>x.id===b.dataset.logEdit&&x.player_id===myId);if(!entry)return;const result=await CometsUI.dialog({title:'Edit training entry',fields:[{name:'details',label:'Entry details',value:entry.details,multiline:true,maxLength:5000}]});if(!result)return;if(!result.details)throw new Error('Enter your training details.');const {error}=await db.from('player_training').update({details:result.details}).eq('id',entry.id).eq('player_id',myId);if(error)throw error;await load();refresh();alert('Entry updated.')}));
- logs.querySelectorAll('[data-log-delete]').forEach(b=>b.onclick=()=>safe(async()=>{if(!await confirm('Delete this training entry?'))return;const {error}=await db.from('player_training').delete().eq('id',b.dataset.logDelete).eq('player_id',myId);if(error)throw error;await load();refresh();alert('Entry deleted.')}));
+ logs.querySelectorAll('[data-log-edit]').forEach(b=>b.onclick=()=>safe(async()=>{const entry=dbLogs.find(x=>x.id===b.dataset.logEdit&&x.player_id===myId);if(!entry)return;const result=await CometsUI.dialog({title:'Edit training entry',fields:[{name:'details',label:'Entry details',value:entry.details,multiline:true,maxLength:5000}]});if(!result)return;if(!result.details)throw new Error('Enter your training details.');const {error}=await db.from('player_training').update({details:result.details}).eq('id',entry.id).eq('player_id',myId);if(error)throw error;await load();refreshPersonalTraining();alert('Entry updated.')}));
+ logs.querySelectorAll('[data-log-delete]').forEach(b=>b.onclick=()=>safe(async()=>{if(!await confirm('Delete this training entry?'))return;const {error}=await db.from('player_training').delete().eq('id',b.dataset.logDelete).eq('player_id',myId);if(error)throw error;await load();refreshPersonalTraining();alert('Entry deleted.')}));
  }
 }
 async function invite(){if(!coach())return;await safe(async()=>{
@@ -335,15 +344,15 @@ function liveTeam(){
 window.render=function(){
  if(!ready){renderBase();return}
  previewMode=coach()?'coach':'player';if(!coach())previewPlayerId=myId||'';
- const pages=coach()?{home,team:liveTeam,squad:squadView,matches:matchesView,sessions:sessionsView,profile:profileView,video:()=>'',training:trainingHub,playerprograms:()=>'',stats:()=>'',access:()=>'',matchstats:()=>'',backup:backupView,gym:workouts,workout:workoutView,nutrition,progress:()=>''}:{home:playerHome,team:playerTeam,matches:playerMatches,stats:()=>'',video:()=>'',training:()=>''};
+ const pages=coach()?{home,team:liveTeam,squad:squadView,matches:matchesView,sessions:sessionsView,profile:profileView,video:()=>'',notifications:()=>'',briefings:()=>'',training:trainingHub,playerprograms:()=>'',stats:()=>'',access:()=>'',matchstats:()=>'',backup:backupView,gym:workouts,workout:workoutView,nutrition,progress:()=>''}:{home:playerHome,team:playerTeam,matches:playerMatches,stats:()=>'',video:()=>'',notifications:()=>'',briefings:()=>'',training:()=>''};
  const page=pages[state.tab];if(!page)state.tab='home';
  document.getElementById('app').innerHTML=(page||pages.home)();
  const totals=matchStats();document.getElementById('club-stats').innerHTML='<div class="stat"><strong>'+esc2(club.season)+'</strong><small>Season</small></div><div class="stat"><strong>1ST GRADE</strong><small>Division</small></div><div class="stat"><strong>'+totals.w+'–'+totals.l+'–'+totals.d+'</strong><small>W–L–D</small></div>';
  enhance();
 };
 const originalChangeTab=window.changeTab;
-window.changeTab=async function(tab){if(window.cometsAttendanceDirty&&!await confirm('Leave Training and discard unsaved attendance changes?'))return;window.cometsAttendanceDirty=false;originalChangeTab(tab)};
-addEventListener('beforeunload',event=>{if(window.cometsAttendanceDirty){event.preventDefault();event.returnValue=''}});
+window.changeTab=async function(tab){if((window.cometsAttendanceDirty||window.cometsBriefingDirty)&&!await confirm('Leave this page and discard unsaved changes?'))return;window.cometsAttendanceDirty=false;window.cometsBriefingDirty=false;originalChangeTab(tab)};
+addEventListener('beforeunload',event=>{if(window.cometsAttendanceDirty||window.cometsBriefingDirty){event.preventDefault();event.returnValue=''}});
 async function boot(){
  activationForm();
  const loginButton=document.querySelector('#comets-login-form button[type=submit]');
@@ -440,9 +449,77 @@ async function renderVideo(app){
  await loadVideos();
 }
 
+let pendingBriefingFixture='',notificationSeason='';
+async function updateNotificationBadge(){
+ if(!ready||!user)return;const forUser=user.id;
+ try{const {data,error}=await db.rpc('comets_unread_count');if(error||!ready||user?.id!==forUser)return;const count=Math.max(0,Number(data)||0),button=document.getElementById('acc-notifications');if(button)button.textContent='Notifications'+(count?' · '+count+' unread':'');const trigger=document.getElementById('acc-btn');if(trigger){let pill=trigger.querySelector('.account-unread');if(!pill){pill=document.createElement('span');pill.className='account-unread';pill.setAttribute('aria-hidden','true');trigger.append(pill)}pill.hidden=!count;pill.textContent=count>99?'99+':String(count);trigger.setAttribute('aria-label','Account — '+(coach()?'Coach':'Player')+(count?', '+count+' unread notifications':''))}const badge=document.getElementById('notification-home-count');if(badge)badge.textContent=count?count+' unread':'All caught up';}catch{}
+}
+function appendNotificationHome(app){
+ const c=document.createElement('section');c.className='card';c.innerHTML='<div class="club-kicker">YOUR UPDATES</div><h3>Notifications</h3><p id="notification-home-count">Match briefings and personal achievements.</p><button class="secondary" onclick="changeTab(\'notifications\')">OPEN INBOX</button>';app.append(c);updateNotificationBadge();
+}
+async function renderInbox(app){
+ app.innerHTML='<div class="section-head"><div class="club-kicker">COMETS HQ · YOUR UPDATES</div><h2>NOTIFICATIONS</h2><p>Match briefings and personal season highs. Updates arrive here while you use the app.</p></div><button class="secondary" id="notifications-read-all">MARK ALL READ</button><div id="notifications-list" class="club-feature-list" role="status">Loading notifications…</div>';
+ const root=app.querySelector('#notifications-list');
+ const read=async()=>{
+  try{const {data,error}=await db.from('comets_notifications').select('*').eq('user_id',user.id).order('created_at',{ascending:false}).limit(100);if(error)throw error;if(!root.isConnected)return;
+   root.innerHTML=data?.length?data.map(n=>'<article class="card notification-card '+(n.read_at?'':'is-unread')+'"><span class="pill">'+(n.read_at?'Read':'New')+'</span><h3>'+esc2(n.title)+'</h3><p>'+esc2(n.body)+'</p><p class="mini">'+esc2(new Date(n.created_at).toLocaleString('en-AU'))+'</p><button class="secondary" data-open-notification="'+esc2(n.id)+'">'+(n.kind==='briefing'?'VIEW MATCH BRIEFING':'VIEW SEASON HIGHS')+'</button></article>').join(''):'<section class="card"><p>No notifications yet. Your coach’s published briefings and new personal season highs will appear here.</p></section>';
+   root.querySelectorAll('[data-open-notification]').forEach(b=>b.onclick=()=>safe(async()=>{const n=data.find(n=>n.id===b.dataset.openNotification);const {error}=await db.from('comets_notifications').update({read_at:new Date().toISOString()}).eq('id',n.id).eq('user_id',user.id);if(error)throw error;await updateNotificationBadge();if(n.kind==='briefing'){pendingBriefingFixture=n.fixture_id;changeTab('briefings')}else{notificationSeason=String(n.season);changeTab('stats')}}));
+  }catch{if(root.isConnected)root.innerHTML='<section class="card"><p>Notifications are unavailable. Check your connection or ask the project administrator to install the club updates SQL.</p><button class="secondary" id="notifications-retry">RETRY</button></section>';root.querySelector('#notifications-retry')?.addEventListener('click',read)}
+ };
+ app.querySelector('#notifications-read-all').onclick=()=>safe(async()=>{const {error}=await db.from('comets_notifications').update({read_at:new Date().toISOString()}).eq('user_id',user.id).is('read_at',null);if(error)throw error;await read();await updateNotificationBadge()});await read();
+}
+function appendBriefingShortcut(app){
+ const c=document.createElement('section');c.className='card briefing-shortcut';c.innerHTML='<div class="club-kicker">MATCH PREPARATION</div><h3>Opposition briefing</h3><p>'+(coach()?'Keep opposition notes, review previous observations and publish a concise plan for the squad.':'Read your coaches’ published strengths, weaknesses and team priorities for the next match.')+'</p><button class="primary" onclick="changeTab(\'briefings\')">'+(coach()?'MANAGE BRIEFINGS':'VIEW MATCH BRIEFING')+'</button>';
+ const heading=app.querySelector('.section-head')||app.querySelector('h2');if(heading)heading.after(c);else app.prepend(c);
+}
+async function renderBriefings(app){
+ const isCoach=coach(),fixtures=dbFixtures.slice().sort((a,b)=>a.match_date.localeCompare(b.match_date));
+ const initial=fixtures.find(f=>f.id===pendingBriefingFixture)||fixtures.find(f=>f.match_date>=today())||fixtures.at(-1);pendingBriefingFixture='';
+ app.innerHTML='<div class="section-head"><button class="secondary" onclick="changeTab(\'matches\')">← MATCH CENTRE</button><div class="club-kicker">MATCH PREPARATION</div><h2>OPPOSITION BRIEFING</h2><p>'+(isCoach?'Keep three short points per section. Saved drafts stay coach-only; publishing sends one inbox update to members.':'Your coaches’ key notes for the selected match.')+'</p></div><section class="card"><label for="briefing-fixture">Match</label><select id="briefing-fixture">'+fixtures.map(f=>'<option value="'+esc2(f.id)+'">'+esc2((f.round_label?f.round_label+' · ':'')+f.opponent+' · '+f.match_date)+'</option>').join('')+'</select></section><div id="briefing-content" role="status"></div>';
+ const picker=app.querySelector('#briefing-fixture'),root=app.querySelector('#briefing-content');if(!initial){root.innerHTML='<section class="card"><p>No fixtures yet. '+(isCoach?'Add a match in Match Centre to prepare a briefing.':'Your next match briefing will appear here once scheduled.')+'</p></section>';return}picker.value=initial.id;
+ let selected=initial.id,revision=0,dirty=false,request=0;window.cometsBriefingDirty=false;
+ async function loadBriefing(){
+  const nonce=++request,fixture=fixtures.find(f=>f.id===picker.value);selected=fixture.id;root.textContent='Loading match preparation…';
+  try{
+   const pub=await db.from('comets_published_briefings').select('*').eq('fixture_id',fixture.id).maybeSingle();if(pub.error)throw pub.error;
+   let draft=null,notebook=null;if(isCoach){const response=await db.from('comets_briefing_drafts').select('*').eq('fixture_id',fixture.id).maybeSingle();if(response.error)throw response.error;draft=response.data;if(!draft){const book=await db.from('comets_opponent_notes').select('*').eq('opponent_key',CometsClub.opponentKey(fixture.opponent)).maybeSingle();if(book.error)throw book.error;notebook=book.data}}
+   if(!root.isConnected||nonce!==request)return;revision=draft?.revision||0;dirty=false;window.cometsBriefingDirty=false;
+   const info=isCoach?(draft||notebook||pub.data||{}):pub.data;
+   if(!isCoach){root.innerHTML=info?briefingReadView(info,fixture):'<section class="card"><h3>Briefing not published yet</h3><p>Your coach will notify you when this match’s preparation is ready.</p></section>';return}
+   root.innerHTML='<section class="card"><span class="pill">'+(pub.data?'Published briefing available to players':'Private draft')+'</span><h3>'+esc2(fixture.opponent)+'</h3>'+(notebook?'<p class="club-note">Previous opposition notes loaded. Review and update them before publishing for this match.</p>':'')+'<p>Saving a draft keeps any existing published version unchanged. Publish updates only when ready.</p>'+[['strengths','Opposition strengths'],['weaknesses','Weaknesses to target'],['priorities','Our three priorities']].map(([key,label])=>'<label for="briefing-'+key+'">'+label+'</label><textarea id="briefing-'+key+'" maxlength="1000" rows="3">'+esc2(info[key]||'')+'</textarea>').join('')+'<label for="briefing-video">YouTube clip (optional)</label><input id="briefing-video" type="url" placeholder="https://youtu.be/…" value="'+esc2(info.video_url||'')+'"><div class="tools"><button class="secondary" data-briefing-action="save">SAVE PRIVATE DRAFT</button><button class="primary" data-briefing-action="publish">PUBLISH TO SQUAD</button>'+(pub.data?'<button class="secondary" data-briefing-action="unpublish">UNPUBLISH</button>':'')+'</div><p id="briefing-save-state" role="status"></p></section>'+(pub.data?'<h3>Currently published version</h3>'+briefingReadView(pub.data,fixture):'');
+   root.querySelectorAll('textarea,input').forEach(e=>e.oninput=()=>{dirty=true;window.cometsBriefingDirty=true;root.querySelector('#briefing-save-state').textContent='Unsaved briefing changes.'});
+   root.querySelectorAll('[data-briefing-action]').forEach(b=>b.onclick=()=>safe(async()=>{
+    const action=b.dataset.briefingAction;if(action!=='save'&&!await confirm(action==='publish'?'Publish this briefing and notify the squad?':'Remove the published briefing from players?'))return;
+    const video=val('briefing-video'),videoId=video?CometsVideo.youtubeId(video):null;if(video&&!videoId)throw new Error('Use a valid YouTube video link.');
+    const {error}=await db.rpc('comets_save_briefing',{p_fixture:selected,p_strengths:val('briefing-strengths'),p_weaknesses:val('briefing-weaknesses'),p_priorities:val('briefing-priorities'),p_video:videoId?'https://www.youtube.com/watch?v='+videoId:'',p_revision:revision,p_action:action});if(error)throw error;
+    dirty=false;window.cometsBriefingDirty=false;await loadBriefing();await updateNotificationBadge();alert(action==='save'?'Private draft saved.':action==='publish'?'Briefing published.':'Briefing unpublished.');
+   }));CometsUI.polish();
+  }catch{if(root.isConnected&&nonce===request){root.innerHTML='<section class="card"><p>Briefings are unavailable. Retry, or ask the project administrator to install the club updates SQL.</p><button class="secondary" id="briefing-retry">RETRY</button></section>';root.querySelector('button').onclick=loadBriefing}}
+ }
+ picker.onchange=async()=>{const next=picker.value;if(dirty&&!await confirm('Discard unsaved briefing changes and switch matches?')){picker.value=selected;return}picker.value=next;window.cometsBriefingDirty=false;await loadBriefing()};await loadBriefing();
+}
+function briefingReadView(info,fixture){
+ const id=CometsVideo.youtubeId(info.video_url||'');return '<section class="card published-briefing"><div class="club-kicker">COACH’S MATCH PLAN</div><h3>'+esc2(fixture.opponent)+'</h3>'+[['strengths','Their strengths'],['weaknesses','Opportunities to target'],['priorities','Our priorities']].map(([key,label])=>'<h4>'+label+'</h4><p class="briefing-text">'+esc2(info[key]||'No additional notes.')+'</p>').join('')+(id?'<a href="https://www.youtube.com/watch?v='+id+'" target="_blank" rel="noopener noreferrer">WATCH ANALYSIS CLIP ↗</a>':'')+'</section>';
+}
+function appendSeasonHighs(app){
+ if(!window.CometsClub)return;
+ const c=document.createElement('section');c.className='card season-highs';
+ const years=[...new Set([String(club.season),...dbFixtures.map(f=>String(f.match_date).slice(0,4))])].filter(y=>/^\d{4}$/.test(y)).sort().reverse();const initial=years.includes(notificationSeason)?notificationSeason:years.includes(String(club.season))?String(club.season):years[0];notificationSeason='';
+ c.innerHTML='<div class="club-kicker">SEASON RECORDS</div><h3>Single-match season highs</h3><p>Personal bests and squad leaders from official match entries. These are single-game records, not season totals.</p><label for="highs-season">Season (calendar year)</label><select id="highs-season">'+years.map(y=>'<option>'+esc2(y)+'</option>').join('')+'</select><div id="highs-content" class="season-high-grid"></div>';
+ const intro=app.querySelector('.section-head');if(intro)intro.after(c);else app.prepend(c);const select=c.querySelector('select');select.value=initial||'';
+ const draw=()=>{const records=CometsClub.highs(dbFixtures,dbStats,select.value),names=new Map([...dbPlayers,...dbArchivedPlayers].map(p=>[p.id,p.full_name]));c.querySelector('#highs-content').innerHTML=Object.entries(CometsClub.metrics).map(([key,label])=>{const lead=records.leaders[key],personal=myId?records.players[myId]?.[key]:null;return '<article><h4>'+label+'</h4><strong>'+lead.value.toLocaleString('en-AU')+'</strong><p>'+esc2(lead.players.length?lead.players.map(id=>names.get(id)||'Squad player').join(' · '):'No positive results recorded')+'</p>'+(myId?'<small>Your season best: '+esc2(personal?personal.value.toLocaleString('en-AU'):'Not recorded')+'</small>':'')+'</article>'}).join('')};select.onchange=draw;draw();
+}
+function appendCoachLink(app){
+ const c=document.createElement('section');c.className='card';c.id='member-player-link';c.innerHTML='<h3>Link an existing account to the squad</h3><p>For playing coaches, link the existing coach account to its squad profile. Coaching permissions are unchanged. Activate new accounts before linking them.</p><label for="member-link-email">Member’s sign-in email</label><input id="member-link-email" type="email" value="'+esc2(user.email)+'"><label for="member-link-player">Squad profile</label><select id="member-link-player"><option value="">Staff-only coach (no squad link)</option>'+dbPlayers.map(p=>'<option value="'+esc2(p.id)+'">'+esc2(p.full_name)+'</option>').join('')+'</select><button class="primary" id="member-link-save">SAVE ACCOUNT LINK</button>';
+ app.append(c);if(myId)c.querySelector('select').value=myId;
+ c.querySelector('button').onclick=()=>safe(async()=>{const input=c.querySelector('#member-link-email');if(!input.value||!input.reportValidity())throw new Error('Enter the member’s sign-in email.');const player=val('member-link-player')||null;if(!await confirm(player?'Link this account to the selected player without changing its role?':'Remove this coach’s squad link? Coaching access will remain.'))return;
+ const {data,error}=await db.rpc('comets_link_member',{p_email:val('member-link-email'),p_player:player});if(error)throw error;if(!data?.user_id)throw new Error('Account link was not saved.');if(data.user_id===user.id){myId=data.player_id||null;await load();account()}alert('Account link saved. Coaching access is unchanged.');});
+}
+
 async function renderAccess(app){
  if(!coach())return;
  app.innerHTML='<div class="section-head"><div class="club-kicker">COACH ADMINISTRATION</div><h2>MEMBER ACCESS</h2><p>Create one-time activation codes for coaches and players. Codes expire after 24 hours.</p></div><section class="card"><h3>Create an activation code</h3><p>Assign the role here. The member cannot change it during activation.</p><label for="access-name">Member name</label><input id="access-name" maxlength="100" autocomplete="name"><label for="access-email">Member email</label><input id="access-email" type="email" autocomplete="email"><label for="access-role">Access level</label><select id="access-role"><option value="player">Player</option><option value="coach">Coach — includes member administration</option></select><label for="access-player">Squad player (players only — leave blank for coaches)</label><select id="access-player"><option value="">Choose a player</option>'+dbPlayers.map(p=>'<option value="'+esc2(p.id)+'">'+esc2(p.full_name)+'</option>').join('')+'</select><div class="tools"><button class="primary" id="access-issue">GENERATE CODE</button></div><div id="access-code"></div></section><section class="card"><h3>Recent activation codes</h3><p>Revoking an unused code prevents activation. It does not disable an existing account.</p><div id="access-list" role="status">Loading…</div></section>';
+ appendCoachLink(app);
  const roleSelect=app.querySelector('#access-role'),playerSelect=app.querySelector('#access-player');roleSelect.onchange=()=>{playerSelect.disabled=roleSelect.value==='coach';if(playerSelect.disabled)playerSelect.value=''};
  const list=app.querySelector('#access-list');
  app.querySelector('#access-issue').onclick=()=>safe(async()=>{
@@ -475,5 +552,6 @@ function activationForm(){
  })};
 }
 
+setInterval(()=>{if(ready&&document.visibilityState==='visible')updateNotificationBadge()},60000);
 boot();
 })();
