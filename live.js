@@ -235,13 +235,39 @@ async function appendPlayerBenchmarks(app,playerId){
  type.value='bronco';filter.value='bronco';configure();await read();
 }
 
+function appendPreseasonPlan(app){
+ const section=document.createElement('section');
+ section.className='card';
+ const sessions=cometsPreseasonPlan[0].sessions.flatMap((_,week)=>
+  cometsPreseasonPlan.map(({sessions,prep,notes})=>({...sessions[week],prep,notes})));
+ const list=lines=>'<ul>'+lines.map(line=>'<li>'+esc2(line)+'</li>').join('')+'</ul>';
+ section.innerHTML='<details><summary><strong>2026/27 preseason field plan</strong></summary>'
+  +'<p>17 November to 17 December 2026</p><label for="preseason-session">Field session</label>'
+  +'<select id="preseason-session">'+sessions.map((session,index)=>'<option value="'+index+'">'+esc2(session.label)+'</option>').join('')+'</select>'
+  +'<div id="preseason-session-plan"></div></details>';
+ const picker=section.querySelector('select');
+ const plan=section.querySelector('#preseason-session-plan');
+ function showSession(){
+  const session=sessions[picker.value];
+  plan.innerHTML='<h4>'+esc2(session.label)+'</h4>'
+   +'<details><summary>Warm-up and drill instructions</summary>'
+   +Object.entries(session.prep).map(([title,lines])=>'<h4>'+esc2(title)+'</h4>'+list(lines)).join('')+'</details>'
+   +session.blocks.map(block=>'<h4>'+esc2(block.title)+'</h4>'+list(block.lines)).join('')
+   +'<details><summary>Session notes</summary>'+list(session.notes)+'</details>';
+ }
+ picker.addEventListener('change',showSession);
+ showSession();
+ const heading=app.querySelector('.section-head');
+ if(heading)heading.after(section);else app.prepend(section);
+}
+
 function renderTrainingArea(app){
- if(!coach()){app.innerHTML='<div class="section-head"><div class="club-kicker">FIRST GRADE · PRIVATE</div><h2>MY TRAINING</h2></div>';appendTraining(app);return}
+ if(!coach()){app.innerHTML='<div class="section-head"><div class="club-kicker">FIRST GRADE · PRIVATE</div><h2>MY TRAINING</h2></div>';appendTraining(app);appendPreseasonPlan(app);return}
  app.innerHTML='<div class="section-head"><div class="club-kicker">COACHING & PERFORMANCE</div><h2>TRAINING</h2><p>Personal training tools and your team attendance register.</p></div><div class="training-tabs" role="tablist" aria-label="Training sections"><button type="button" id="training-tools-tab" role="tab" aria-selected="true" aria-controls="training-tools-panel" tabindex="0">Training</button><button type="button" id="training-attendance-tab" role="tab" aria-selected="false" aria-controls="training-attendance-panel" tabindex="-1">Attendance</button></div><section id="training-tools-panel" role="tabpanel" aria-labelledby="training-tools-tab" tabindex="0"></section><section id="training-attendance-panel" role="tabpanel" aria-labelledby="training-attendance-tab" tabindex="0" hidden></section>';
  const tools=app.querySelector('#training-tools-panel'),attendance=app.querySelector('#training-attendance-panel');
  let personal=null;if(myId){const tab=document.createElement('button');tab.type='button';tab.id='training-personal-tab';tab.setAttribute('role','tab');tab.setAttribute('aria-controls','training-personal-panel');tab.setAttribute('aria-selected','false');tab.tabIndex=-1;tab.textContent='My Training';app.querySelector('.training-tabs').append(tab);personal=document.createElement('section');personal.id='training-personal-panel';personal.setAttribute('role','tabpanel');personal.setAttribute('aria-labelledby',tab.id);personal.hidden=true;personal.tabIndex=0;app.append(personal)}
  const tabs=[...app.querySelectorAll('[role=tab]')];
- const wrapper=document.createElement('div');wrapper.innerHTML=trainingHub();wrapper.querySelector('.section-head')?.remove();tools.append(...wrapper.childNodes);appendTraining(tools);
+ const wrapper=document.createElement('div');wrapper.innerHTML=trainingHub();wrapper.querySelector('.section-head')?.remove();tools.append(...wrapper.childNodes);appendTraining(tools);appendPreseasonPlan(tools);
  let active=0,attendanceLoaded=false;
  async function activate(index){
   if(index===active)return;

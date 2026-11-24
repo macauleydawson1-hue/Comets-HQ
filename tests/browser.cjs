@@ -63,7 +63,19 @@ function mock(role){
  if(tab==='stats')await page.getByRole('heading',{name:'PLAYER STATISTICS',exact:true}).waitFor();
  if(role==='player')assert.equal(await page.locator('#player-benchmarks').count(),0);
  if(tab==='training'&&role==='player')assert.equal(await page.locator('#attendance-register').count(),0);
- if(tab==='training')assert.equal(await page.getByRole('heading',{name:'Progress tracker'}).count(),0);
+ if(tab==='training'){
+  assert.equal(await page.getByRole('heading',{name:'Progress tracker'}).count(),0);
+  await page.getByText('2026/27 preseason field plan',{exact:true}).click();
+  const session=page.getByLabel('Field session',{exact:true});
+  assert.equal(await session.locator('option').count(),10);
+  await session.selectOption({label:'Week 2 · Tue 24 Nov'});
+  await page.getByText('40m SPRINT TEST',{exact:true}).waitFor();
+  await session.selectOption({label:'Week 4 · Thu 10 Dec'});
+  await page.getByText('BROKEN BRONCO',{exact:true}).waitFor();
+  await page.getByText('Warm-up and drill instructions',{exact:true}).click();
+  await page.getByText('Week 4 Rounds 1–3: 1 rep, 2 continuous reps, 2 continuous reps per group.',{exact:true}).waitFor();
+  assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false,`${role}/${width}: preseason plan overflow`);
+ }
  screens++;
  }
  page.once('dialog',d=>d.accept());
