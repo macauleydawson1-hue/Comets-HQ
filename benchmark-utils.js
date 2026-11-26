@@ -1,8 +1,11 @@
 /* Shared benchmark definitions. Durations are stored as seconds; reps as integers. */
 (()=>{'use strict';
 const types={
- bench_press:{label:'Bench working set',unit:'kg',higher:true},squat:{label:'Squat working set',unit:'kg',higher:true},trap_bar:{label:'Trap-bar working set',unit:'kg',higher:true},
- bronco:{label:'Bronco',unit:'time',higher:false},sprint_100m:{label:'100 m sprint',unit:'seconds',higher:false},pushups_1min:{label:'Push-ups (1 min)',unit:'reps',higher:true},plank:{label:'Plank',unit:'time',higher:true},situps_1min:{label:'Sit-ups (1 min)',unit:'reps',higher:true}
+ bronco:{label:'Bronco',unit:'time',higher:false},
+ run_4min:{label:'4-minute run',unit:'m',higher:true},
+ pushups:{label:'Push-ups',unit:'reps',higher:true},
+ plank:{label:'Plank',unit:'time',higher:true},
+ sprint_40m:{label:'40 m sprint',unit:'seconds',higher:false}
 };
 function parse(type,input){const config=types[type];if(!config)throw new Error('Choose a benchmark.');const text=String(input).trim();let number;
  if(config.unit==='time'&&text.includes(':')){const match=/^(\d{1,3}):([0-5]\d)(?:\.(\d{1,2}))?$/.exec(text);if(!match)throw new Error('Enter time as minutes:seconds, for example 5:30.');number=Number(match[1])*60+Number(match[2])+Number('0.'+(match[3]||'0'))}
