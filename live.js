@@ -21,8 +21,8 @@ const safe=async(fn)=>{
 const renderBase=window.render;
 function refresh(){if(!ready)return;previewMode=coach()?'coach':'player';if(!coach()){previewPlayerId=myId||'';}window.render();}
 function enhance(){
- const current=['gym','workout','nutrition','progress'].includes(state.tab)?'training':['profile','squad'].includes(state.tab)?'team':['sessions','matchstats','briefings'].includes(state.tab)?'matches':state.tab;
- document.getElementById('tabs').innerHTML=[['home','Home'],['team','Team'],['matches','Matches'],['stats','Stats'],['training',coach()?'Training':'My Training'],['video','Video']].map(([id,label])=>'<button class="'+(current===id?'active':'')+'" onclick="changeTab(\''+id+'\')">'+label+'</button>').join('');
+ const current=(['gym','workout','nutrition'].includes(state.tab)||(coach()&&state.tab==='progress'))?'training':['profile','squad'].includes(state.tab)?'team':['sessions','matchstats','briefings'].includes(state.tab)?'matches':state.tab;
+ document.getElementById('tabs').innerHTML=[['home','Home'],['team','Team'],['matches','Matches'],['stats','Stats'],['training',coach()?'Training':'My Training'],['video','Video'],...(!coach()?[['progress','Progress']]:[])].map(([id,label])=>'<button class="'+(current===id?'active':'')+'" onclick="changeTab(\''+id+'\')">'+label+'</button>').join('');
 
  document.querySelector('.mode-switch-wrap')?.setAttribute('hidden','');
  const a=document.querySelector('.athlete');if(a)a.textContent=(displayName || (coach()?'COACH DASHBOARD':'PLAYER DASHBOARD')).toUpperCase();
@@ -31,7 +31,7 @@ function enhance(){
  const app=document.getElementById('app');if(!app)return;
  if(state.tab==='notifications'){renderInbox(app);CometsUI.polish();return}
  if(state.tab==='briefings'){renderBriefings(app);CometsUI.polish();return}
- if(state.tab==='progress'&&coach()){renderCoachProgress(app);CometsUI.polish();return}
+ if(state.tab==='progress'){if(coach())renderCoachProgress(app);else renderPlayerProgress(app);CometsUI.polish();return}
  if(state.tab==='training'){renderTrainingArea(app);CometsUI.polish();return}
  if(state.tab==='video'){renderVideo(app);CometsUI.polish();return}
  if(state.tab==='access'){if(coach())renderAccess(app);else app.innerHTML='<section class="card"><h2>Coach access required</h2></section>';CometsUI.polish();return}
@@ -204,21 +204,27 @@ function renderCoachProgress(app){
  function show(){content.replaceChildren();if(benchmarkPlayerId)appendPlayerBenchmarks(content,benchmarkPlayerId);else content.innerHTML='<section class="card"><p>Add players in Team → Squad before recording benchmarks.</p></section>'}
  picker.onchange=async()=>{const next=picker.value;if((content.querySelector('#benchmark-result')?.value.trim()||content.querySelector('#benchmark-notes')?.value.trim())&&!await confirm('Change player and discard the unsaved benchmark entry?')){picker.value=benchmarkPlayerId;return}benchmarkPlayerId=next;show()};show();
 }
+function renderPlayerProgress(app){
+ app.innerHTML='<div class="section-head"><h2>MY PROGRESS</h2></div>';
+ if(myId)appendPlayerBenchmarks(app,myId);
+ else app.insertAdjacentHTML('beforeend','<section class="card"><p>Ask your coach to link your account to your squad profile to see your results.</p></section>');
+}
 async function appendPlayerBenchmarks(app,playerId){
- const player=dbPlayers.find(p=>p.id===playerId);if(!coach()||!player)return;
+ const canEdit=coach(),player=dbPlayers.find(p=>p.id===playerId);
+ if(canEdit&&!player)return;
  if(!window.CometsBenchmarks){const message=document.createElement('section');message.className='card';message.textContent='Refresh COMETS HQ to load the updated benchmark tracker.';app.append(message);return;}
  const section=document.createElement('section');section.className='card benchmark-card';section.id='player-benchmarks';
  const {types,parse,format,inputValue}=CometsBenchmarks;
  const options=Object.entries(types).map(([key,c])=>'<option value="'+key+'">'+esc2(c.label)+'</option>').join('');
- section.innerHTML='<div class="club-kicker">PLAYER PERFORMANCE</div><h3>Progress tracker</h3><p>Record and review '+esc2(player.full_name)+'’s benchmark results. Saved results are shared between coaches.</p><div class="benchmark-form"><div><label for="benchmark-type">Benchmark</label><select id="benchmark-type">'+options+'</select></div><div><label for="benchmark-date">Test date</label><input id="benchmark-date" type="date" value="'+today()+'" required></div><div><label for="benchmark-result" id="benchmark-result-label">Result</label><input id="benchmark-result" aria-describedby="benchmark-result-help"><p class="mini" id="benchmark-result-help"></p></div><div><label for="benchmark-notes">Notes (optional)</label><input id="benchmark-notes" maxlength="500" placeholder="Conditions, technique or coaching notes"></div></div><button class="primary" id="benchmark-save" disabled>SAVE PLAYER RESULT</button><hr><label for="benchmark-filter">View benchmark</label><select id="benchmark-filter">'+options+'</select><div id="benchmark-history" aria-live="polite">Loading player results…</div>';
+ section.innerHTML='<div class="club-kicker">PLAYER PERFORMANCE</div><h3>Progress tracker</h3>'+(canEdit?'<p>Record and review '+esc2(player.full_name)+'’s benchmark results. Coaching notes are visible to coaches.</p><div class="benchmark-form"><div><label for="benchmark-type">Benchmark</label><select id="benchmark-type">'+options+'</select></div><div><label for="benchmark-date">Test date</label><input id="benchmark-date" type="date" value="'+today()+'" required></div><div><label for="benchmark-result" id="benchmark-result-label">Result</label><input id="benchmark-result" aria-describedby="benchmark-result-help"><p class="mini" id="benchmark-result-help"></p></div><div><label for="benchmark-notes">Notes (optional)</label><input id="benchmark-notes" maxlength="500" placeholder="Conditions, technique or coaching notes"></div></div><button class="primary" id="benchmark-save" disabled>SAVE PLAYER RESULT</button><hr>':'')+'<label for="benchmark-filter">View benchmark</label><select id="benchmark-filter">'+options+'</select><div id="benchmark-history" aria-live="polite">Loading player results…</div>';
  const details=app.querySelector('#profile-name')?.closest('section');if(details)details.after(section);else app.append(section);
  const type=section.querySelector('#benchmark-type'),result=section.querySelector('#benchmark-result'),filter=section.querySelector('#benchmark-filter'),history=section.querySelector('#benchmark-history'),saveButton=section.querySelector('#benchmark-save');
  let rows=[],loaded=false;
  function configure(){const unit=types[type.value].unit;result.type=unit==='time'?'text':'number';result.value='';result.min=unit==='reps'?'0':'0.01';result.step=unit==='reps'?'1':'0.01';result.inputMode=unit==='time'?'text':'decimal';result.placeholder=unit==='time'?'5:30':unit==='reps'?'e.g. 35':'e.g. 14.25';section.querySelector('#benchmark-result-label').textContent='Result ('+(unit==='time'?'minutes:seconds':unit)+')';section.querySelector('#benchmark-result-help').textContent=unit==='time'?'Enter m:ss (e.g. 5:30) or total seconds.':unit==='reps'?'Enter the total number of push-ups completed.':'Use consistent testing conditions when comparing results.';}
  async function read(){
-  saveButton.disabled=true;loaded=false;
-  try{const {data,error}=await db.from('comets_player_benchmarks').select('*').eq('player_id',playerId).order('tested_on',{ascending:false}).order('created_at',{ascending:false});if(error)throw error;if(!section.isConnected)return;rows=(data||[]).sort((a,b)=>b.tested_on.localeCompare(a.tested_on)||b.created_at.localeCompare(a.created_at));loaded=true;saveButton.disabled=false;draw();}
-  catch{if(!section.isConnected)return;history.innerHTML='<p>Player benchmarks are unavailable. If this is the first setup, install the benchmark SQL in Supabase.</p><button class="secondary" id="benchmark-retry">RETRY</button>';history.querySelector('button').onclick=read}
+  if(saveButton)saveButton.disabled=true;loaded=false;
+  try{const {data,error}=await (canEdit?db.from('comets_player_benchmarks').select('*').eq('player_id',playerId).order('tested_on',{ascending:false}).order('created_at',{ascending:false}):db.rpc('comets_my_benchmarks'));if(error)throw error;if(!section.isConnected)return;rows=(data||[]).sort((a,b)=>b.tested_on.localeCompare(a.tested_on)||b.created_at.localeCompare(a.created_at));loaded=true;if(saveButton)saveButton.disabled=false;draw();}
+  catch{if(!section.isConnected)return;history.innerHTML='<p>Fitness results are unavailable. Please try again.</p><button class="secondary" id="benchmark-retry">RETRY</button>';history.querySelector('button').onclick=read}
  }
  function draw(){
   const key=filter.value,config=types[key],entries=rows.filter(r=>r.benchmark===key),latest=entries[0],best=entries.reduce((b,r)=>!b||(config.higher?Number(r.result)>Number(b.result):Number(r.result)<Number(b.result))?r:b,null);
@@ -226,13 +232,15 @@ async function appendPlayerBenchmarks(app,playerId){
   let chart='';if(entries.length>1){const values=entries.slice(0,12).reverse(),min=Math.min(...values.map(v=>Number(v.result))),max=Math.max(...values.map(v=>Number(v.result))),span=max-min||1;const points=values.map((r,i)=>(24+i*272/(values.length-1))+','+(110-(Number(r.result)-min)*80/span)).join(' ');
    chart='<figure class="benchmark-chart"><svg viewBox="0 0 320 140" role="img" aria-label="'+esc2(config.label+' trend. '+(config.higher?'Higher':'Lower')+' is better. Exact results are listed below.')+'"><line x1="24" y1="115" x2="296" y2="115" stroke="#d6c4ca"/><polyline points="'+points+'" fill="none" stroke="#78142e" stroke-width="3"/>'+values.map((r,i)=>'<circle cx="'+(24+i*272/(values.length-1))+'" cy="'+(110-(Number(r.result)-min)*80/span)+'" r="4" fill="#78142e"/>').join('')+'</svg><figcaption>Last '+values.length+' results · '+esc2(dateText(values[0].tested_on))+' to '+esc2(dateText(values[values.length-1].tested_on))+' · '+(config.higher?'Higher':'Lower')+' is better</figcaption></figure>';
   }
-  history.innerHTML='<div class="benchmark-summary"><div><span>Latest result</span><strong>'+esc2(latest?format(key,latest.result):'—')+'</strong></div><div><span>Personal best</span><strong>'+esc2(best?format(key,best.result):'—')+'</strong><small>'+(config.higher?'Higher':'Lower')+' is better</small></div></div>'+chart+(entries.length?entries.map(r=>'<article class="benchmark-entry"><div><b>'+esc2(format(key,r.result))+'</b><time datetime="'+esc2(r.tested_on)+'">'+esc2(dateText(r.tested_on))+'</time><p>'+esc2(r.notes||'')+'</p></div><div class="tools"><button class="secondary" data-edit-benchmark="'+esc2(r.id)+'">EDIT RESULT</button><button class="secondary" data-delete-benchmark="'+esc2(r.id)+'">DELETE</button></div></article>').join(''):'<p class="attendance-empty">No '+esc2(config.label)+' results for this player yet.</p>');
+  history.innerHTML='<div class="benchmark-summary"><div><span>Latest result</span><strong>'+esc2(latest?format(key,latest.result):'—')+'</strong></div><div><span>Personal best</span><strong>'+esc2(best?format(key,best.result):'—')+'</strong><small>'+(config.higher?'Higher':'Lower')+' is better</small></div></div>'+chart+(entries.length?entries.map(r=>'<article class="benchmark-entry"><div><b>'+esc2(format(key,r.result))+'</b><time datetime="'+esc2(r.tested_on)+'">'+esc2(dateText(r.tested_on))+'</time>'+(canEdit?'<p>'+esc2(r.notes||'')+'</p>':'')+'</div>'+(canEdit?'<div class="tools"><button class="secondary" data-edit-benchmark="'+esc2(r.id)+'">EDIT RESULT</button><button class="secondary" data-delete-benchmark="'+esc2(r.id)+'">DELETE</button></div>':'')+'</article>').join(''):'<p class="attendance-empty">No '+esc2(config.label)+' results yet.</p>');
   history.querySelectorAll('[data-delete-benchmark]').forEach(b=>b.onclick=()=>safe(async()=>{if(!await confirm('Delete this player’s benchmark result? This cannot be undone.'))return;const {data,error}=await db.from('comets_player_benchmarks').delete().eq('id',b.dataset.deleteBenchmark).eq('player_id',playerId).select('id');if(error)throw error;if(!data?.length)throw new Error('Result was removed or permission was denied.');await read();alert('Result deleted.')}));
   history.querySelectorAll('[data-edit-benchmark]').forEach(b=>b.onclick=()=>safe(async()=>{const row=rows.find(r=>r.id===b.dataset.editBenchmark);const edit=await CometsUI.dialog({title:'Edit '+types[row.benchmark].label,fields:[{name:'date',label:'Test date',type:'date',value:row.tested_on},{name:'result',label:'Result ('+(types[row.benchmark].unit==='time'?'m:ss or total seconds':types[row.benchmark].unit)+')',value:inputValue(row.benchmark,row.result)},{name:'notes',label:'Notes',value:row.notes,maxLength:500,required:false}]});if(!edit)return;const value=parse(row.benchmark,edit.result);const {data,error}=await db.from('comets_player_benchmarks').update({tested_on:edit.date,result:value,notes:edit.notes}).eq('id',row.id).eq('player_id',playerId).select('id');if(error)throw error;if(!data?.length)throw new Error('Result was removed or permission was denied.');await read();alert('Player result updated.')}));CometsUI.polish();
  }
- type.onchange=()=>{configure();filter.value=type.value;if(loaded)draw()};filter.onchange=draw;
+ filter.value='bronco';filter.onchange=()=>{if(loaded)draw()};
+ if(!canEdit){await read();return;}
+ type.onchange=()=>{configure();filter.value=type.value;if(loaded)draw()};
  saveButton.onclick=()=>safe(async()=>{if(!loaded)return;const value=parse(type.value,result.value),date=section.querySelector('#benchmark-date');if(!date.value||!date.reportValidity())throw new Error('Choose a test date.');const {error}=await db.from('comets_player_benchmarks').insert({player_id:playerId,benchmark:type.value,result:value,tested_on:date.value,notes:val('benchmark-notes'),recorded_by:user.id});if(error)throw error;filter.value=type.value;result.value='';section.querySelector('#benchmark-notes').value='';await read();alert('Player benchmark saved.');});
- type.value='bronco';filter.value='bronco';configure();await read();
+ type.value='bronco';configure();await read();
 }
 
 function appendPreseasonPlan(app){
@@ -370,7 +378,7 @@ function liveTeam(){
 window.render=function(){
  if(!ready){renderBase();return}
  previewMode=coach()?'coach':'player';if(!coach())previewPlayerId=myId||'';
- const pages=coach()?{home,team:liveTeam,squad:squadView,matches:matchesView,sessions:sessionsView,profile:profileView,video:()=>'',notifications:()=>'',briefings:()=>'',training:trainingHub,playerprograms:()=>'',stats:()=>'',access:()=>'',matchstats:()=>'',backup:backupView,gym:workouts,workout:workoutView,nutrition,progress:()=>''}:{home:playerHome,team:playerTeam,matches:playerMatches,stats:()=>'',video:()=>'',notifications:()=>'',briefings:()=>'',training:()=>''};
+ const pages=coach()?{home,team:liveTeam,squad:squadView,matches:matchesView,sessions:sessionsView,profile:profileView,video:()=>'',notifications:()=>'',briefings:()=>'',training:trainingHub,playerprograms:()=>'',stats:()=>'',access:()=>'',matchstats:()=>'',backup:backupView,gym:workouts,workout:workoutView,nutrition,progress:()=>''}:{home:playerHome,team:playerTeam,matches:playerMatches,stats:()=>'',video:()=>'',notifications:()=>'',briefings:()=>'',training:()=>'',progress:()=>''};
  const page=pages[state.tab];if(!page)state.tab='home';
  document.getElementById('app').innerHTML=(page||pages.home)();
  const totals=matchStats();document.getElementById('club-stats').innerHTML='<div class="stat"><strong>'+esc2(club.season)+'</strong><small>Season</small></div><div class="stat"><strong>1ST GRADE</strong><small>Division</small></div><div class="stat"><strong>'+totals.w+'–'+totals.l+'–'+totals.d+'</strong><small>W–L–D</small></div>';

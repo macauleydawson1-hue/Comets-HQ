@@ -25,6 +25,25 @@ const id=n=>'00000000-0000-0000-0000-'+String(n).padStart(12,'0');
  await db.exec(fs.readFileSync('supabase/migrations/20261109_club_briefings_and_highs.sql','utf8'));
  const as=async n=>{await db.exec('reset role');await db.query("select set_config('request.jwt.claim.sub',$1,false)",[n?id(n):'']);await db.exec('set role authenticated')};
  const one=async(sql,args=[])=> (await db.query(sql,args)).rows[0];
+ await db.exec(fs.readFileSync('supabase/migrations/20261106_player_benchmarks.sql','utf8'));
+ const progressMigration=fs.readdirSync('supabase/migrations').find(name=>name.endsWith('_own_fitness_progress.sql'));
+ await db.exec(fs.readFileSync('supabase/migrations/'+progressMigration,'utf8'));
+ await db.query(`insert into public.comets_player_benchmarks(player_id,benchmark,result,tested_on,notes,recorded_by)
+ values ($1,'bronco',330,'2027-03-01','Private coaching note',$3),
+        ($2,'bronco',390,'2027-03-01','Other player note',$3)`,[id(101),id(103),id(1)]);
+ await as(3);
+ const {rows:ownProgress}=await db.query('select * from public.comets_my_benchmarks()');
+ assert.deepEqual(ownProgress.map(row=>Number(row.result)),[330]);
+ assert.deepEqual(Object.keys(ownProgress[0]),['benchmark','result','tested_on','created_at']);
+ assert.equal((await db.query('select * from public.comets_player_benchmarks')).rows.length,0);
+ assert.equal((await db.query('update public.comets_player_benchmarks set result=1 returning id')).rows.length,0);
+ await as(4);
+ assert.equal(Number((await one('select result from public.comets_my_benchmarks()')).result),390);
+ await as(2);
+ assert.equal((await db.query('select * from public.comets_my_benchmarks()')).rows.length,0);
+ assert.equal((await db.query('select * from public.comets_player_benchmarks')).rows.length,2);
+ await db.exec('reset role; set role anon');
+ await assert.rejects(()=>db.query('select * from public.comets_my_benchmarks()'),/permission denied/);
  const briefing=(action,revision,strength='Strong forwards',priorities='Close the middle')=>db.query('select public.comets_save_briefing($1,$2,$3,$4,$5,$6,$7) result',[id(202),strength,'Slow lateral cover',priorities,'',revision,action]);
  await as(3);await assert.rejects(()=>briefing('publish',0));await assert.rejects(()=>db.query('select public.comets_link_member($1,$2)',['coach@example.test',id(102)]));
  await as(1);await briefing('save',0,'Private initial notes');
