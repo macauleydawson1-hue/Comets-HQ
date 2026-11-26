@@ -52,17 +52,17 @@ function mock(role){
  // The live bridge must restore announcements even if legacy Home markup omits its slot.
  await page.evaluate(()=>{for(const name of ['home','playerHome']){const original=window[name];window[name]=()=>{const wrapper=document.createElement('div');wrapper.innerHTML=original();wrapper.querySelectorAll('.sideline-feature').forEach(e=>e.remove());return wrapper.innerHTML}}changeTab('home')});
  await page.locator('#sideline-all').waitFor();assert.equal(await page.locator('.sideline-feature').count(),1);assert.equal(await page.locator('#acc-sideline').count(),1);
- for(const tab of ['home','team','matches','stats','training','video','briefings','notifications',...(role==='coach'?['sessions','playerprograms','profile','progress']:[])]){
+ for(const tab of ['home','team','matches','stats','training','video','briefings','notifications','progress',...(role==='coach'?['sessions','playerprograms','profile']:[])]){
  await page.evaluate(t=>{if(t==='profile')selectedProfile='p1';changeTab(t)},tab);await page.waitForTimeout(60);
  assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false,`${role}/${width}/${tab}: overflow`);
  assert.equal(await page.locator('main input:not([type=hidden]),main select,main textarea').evaluateAll(fields=>fields.filter(f=>!f.labels?.length&&!f.hasAttribute('aria-label')).length),0,`${tab}: labels`);
  if(tab!=='home')assert(await page.locator('header').evaluate(e=>e.getBoundingClientRect().height)<140);
- assert.deepEqual(await page.locator('#tabs button').allTextContents(),['Home','Team','Matches','Stats',role==='coach'?'Training':'My Training','Video']);assert.match(await page.locator('#acc-btn').innerText(),role==='coach'?/COACH/:/PLAYER/);
+ assert.deepEqual(await page.locator('#tabs button').allTextContents(),['Home','Team','Matches','Stats',role==='coach'?'Training':'My Training','Video',...(role==='player'?['Progress']:[])]);assert.match(await page.locator('#acc-btn').innerText(),role==='coach'?/COACH/:/PLAYER/);
  assert.equal(await page.getByRole('button',{name:/team standards/i}).count(),0);
  if(role==='coach'&&tab==='team'){assert.deepEqual(await page.locator('.inner-tabs button').allTextContents(),['SQUAD','TEAM SELECTION']);await page.getByRole('heading',{name:'First Grade squad'}).waitFor();await page.getByRole('button',{name:'TEAM SELECTION',exact:true}).click();await page.locator('#sel-fixture').waitFor();assert.equal(await page.getByRole('heading',{name:'Progress tracker'}).count(),0);await page.getByRole('button',{name:'SQUAD',exact:true}).click();await page.locator('#player-name').waitFor()}
  if(tab==='matches'){await page.getByRole('heading',{name:/match centre/i}).waitFor();assert.equal(await page.getByRole('heading',{name:'Progress tracker'}).count(),0)}
  if(tab==='stats')await page.getByRole('heading',{name:'PLAYER STATISTICS',exact:true}).waitFor();
- if(role==='player')assert.equal(await page.locator('#player-benchmarks').count(),0);
+ if(role==='player')assert.equal(await page.locator('#player-benchmarks').count(),tab==='progress'?1:0);
  if(tab==='training'&&role==='player')assert.equal(await page.locator('#attendance-register').count(),0);
  if(tab==='training'){
   assert.equal(await page.getByRole('heading',{name:'Progress tracker'}).count(),0);
@@ -81,7 +81,7 @@ function mock(role){
  }
  page.once('dialog',d=>d.accept());
  await page.evaluate(()=>importData({files:[new File([JSON.stringify(state)],'backup.json',{type:'application/json'})]}));
- await page.waitForTimeout(80);assert.deepEqual(await page.locator('#tabs button').allTextContents(),['Home','Team','Matches','Stats',role==='coach'?'Training':'My Training','Video']);
+ await page.waitForTimeout(80);assert.deepEqual(await page.locator('#tabs button').allTextContents(),['Home','Team','Matches','Stats',role==='coach'?'Training':'My Training','Video',...(role==='player'?['Progress']:[])]);
  await page.evaluate(()=>changeTab('home'));await page.locator('#sideline-all').click();await page.locator('[data-delete-post="post1"]').waitFor();assert.equal(await page.locator('[data-delete-post="post2"]').count(),role==='coach'?1:0);
  await page.locator('[data-delete-post="post1"]').click();await page.getByRole('button',{name:'Cancel',exact:true}).click();assert.equal(await page.locator('[data-delete-post="post1"]').count(),1);
  await page.locator('[data-delete-post="post1"]').click();await page.getByRole('button',{name:'Confirm',exact:true}).click();await page.waitForFunction(()=>!document.querySelector('[data-delete-post="post1"]'));assert.equal(await page.getByText('Another member announcement',{exact:true}).count(),1);
